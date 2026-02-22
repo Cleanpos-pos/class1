@@ -1,5 +1,7 @@
 {
-  "projects": {},
+  "projects": {
+    "default": "xp-clean"
+  },
   "targets": {},
   "etags": {}
 }
