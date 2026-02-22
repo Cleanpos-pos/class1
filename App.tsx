@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Page, TimeSlot, CartItem, DeliveryOption, DiscountCode } from './types';
 import { supabase } from './supabaseClient';
 import { sendOrderConfirmation, sendBrevoEmail, sendCustomerSignupNotification } from './services/emailService';
 import DeliveryMap from './components/DeliveryMap';
+import { hashPassword, verifyPassword } from './utils/passwordUtils';
 
 const formatPrice = (price: number | string) => {
   const num = typeof price === 'string' ? parseFloat(price) : price;
@@ -43,14 +45,15 @@ interface Promotion {
 }
 
 interface ServiceCategory {
-  id: string;
   name: string;
   sort_order: number;
+  originalName?: string; // Used when editing
 }
 
 interface ServiceProduct {
   id: string;
   category: string;
+  subcategory?: string;
   name: string;
   price?: number;
   price_numeric?: number;
@@ -144,6 +147,325 @@ const getNextDate = (dayName: string) => {
   const nextDate = new Date(today);
   nextDate.setDate(today.getDate() + daysUntil);
   return nextDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
+};
+
+// --- Report Helper Functions ---
+const groupByDate = (data: any[], dateField = 'created_at') => {
+  const grouped: Record<string, { date: string; total: number; count: number }> = {};
+  data.forEach(item => {
+    const date = new Date(item[dateField]).toISOString().split('T')[0];
+    if (!grouped[date]) {
+      grouped[date] = { date, total: 0, count: 0 };
+    }
+    grouped[date].total += parseFloat(item.total_amount) || 0;
+    grouped[date].count += 1;
+  });
+  return Object.values(grouped).sort((a, b) => a.date.localeCompare(b.date));
+};
+
+const calculatePercentChange = (current: number, previous: number): number => {
+  if (previous === 0) return current > 0 ? 100 : 0;
+  return ((current - previous) / previous) * 100;
+};
+
+const formatCurrency = (amount: number): string => {
+  return `£${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const formatCompactNumber = (num: number): string => {
+  if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+  if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+  return num.toFixed(0);
+};
+
+const getDateRangePreset = (preset: 'today' | 'week' | 'month' | 'quarter' | 'year'): { start: string; end: string } => {
+  const now = new Date();
+  const end = now.toISOString().split('T')[0];
+  let start: Date = new Date(now);
+
+  switch (preset) {
+    case 'today':
+      break;
+    case 'week':
+      start.setDate(start.getDate() - 7);
+      break;
+    case 'month':
+      start.setMonth(start.getMonth() - 1);
+      break;
+    case 'quarter':
+      start.setMonth(start.getMonth() - 3);
+      break;
+    case 'year':
+      start.setFullYear(start.getFullYear() - 1);
+      break;
+  }
+
+  return { start: start.toISOString().split('T')[0], end };
+};
+
+// --- SVG Chart Components ---
+const ReportBarChart: React.FC<{
+  data: { label: string; value: number; color?: string }[];
+  height?: number;
+  showLabels?: boolean;
+  barColor?: string;
+}> = ({ data, height = 200, showLabels = true, barColor = '#0056b3' }) => {
+  if (!data || data.length === 0) return <div className="text-gray-400 text-center py-8">No data available</div>;
+
+  const maxValue = Math.max(...data.map(d => d.value), 1);
+  const barCount = data.length;
+  const barWidth = Math.min(40, (100 / barCount) - 4);
+  const gap = (100 - (barWidth * barCount)) / (barCount + 1);
+
+  return (
+    <div className="w-full" style={{ height }}>
+      <svg viewBox="0 0 100 50" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+        {data.map((item, i) => {
+          const barHeight = (item.value / maxValue) * 38;
+          const x = gap + i * (barWidth + gap);
+          return (
+            <g key={i}>
+              <rect
+                x={x}
+                y={42 - barHeight}
+                width={barWidth}
+                height={barHeight}
+                fill={item.color || barColor}
+                rx={1}
+                className="hover:opacity-80 transition-opacity cursor-pointer"
+              />
+              {showLabels && (
+                <text
+                  x={x + barWidth / 2}
+                  y={48}
+                  textAnchor="middle"
+                  className="fill-gray-500"
+                  style={{ fontSize: '2.5px' }}
+                >
+                  {item.label.slice(0, 6)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+const ReportLineChart: React.FC<{
+  data: { label: string; value: number }[];
+  height?: number;
+  lineColor?: string;
+  fillGradient?: boolean;
+}> = ({ data, height = 200, lineColor = '#0056b3', fillGradient = true }) => {
+  if (!data || data.length === 0) return <div className="text-gray-400 text-center py-8">No data available</div>;
+
+  const maxValue = Math.max(...data.map(d => d.value), 1);
+  const minValue = Math.min(...data.map(d => d.value), 0);
+  const range = maxValue - minValue || 1;
+
+  const points = data.map((item, i) => {
+    const x = (i / Math.max(data.length - 1, 1)) * 96 + 2;
+    const y = 40 - ((item.value - minValue) / range) * 35;
+    return { x, y, value: item.value, label: item.label };
+  });
+
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const areaD = `${pathD} L ${points[points.length - 1]?.x || 2} 42 L 2 42 Z`;
+
+  return (
+    <div className="w-full" style={{ height }}>
+      <svg viewBox="0 0 100 50" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.3" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0.05" />
+          </linearGradient>
+        </defs>
+        {fillGradient && (
+          <path d={areaD} fill="url(#lineGradient)" />
+        )}
+        <path d={pathD} fill="none" stroke={lineColor} strokeWidth="0.8" strokeLinecap="round" strokeLinejoin="round" />
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r="1.2"
+            fill="white"
+            stroke={lineColor}
+            strokeWidth="0.5"
+            className="hover:r-2 transition-all cursor-pointer"
+          />
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+const ReportDonutChart: React.FC<{
+  data: { label: string; value: number; color: string }[];
+  size?: number;
+  centerLabel?: string;
+  centerValue?: string | number;
+}> = ({ data, size = 150, centerLabel, centerValue }) => {
+  if (!data || data.length === 0) return <div className="text-gray-400 text-center py-8">No data</div>;
+
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  if (total === 0) return <div className="text-gray-400 text-center py-8">No data</div>;
+
+  const radius = 35;
+  const circumference = 2 * Math.PI * radius;
+  let currentOffset = 0;
+
+  return (
+    <div className="relative inline-flex flex-col items-center">
+      <svg width={size} height={size} viewBox="0 0 100 100">
+        {data.map((item, i) => {
+          const strokeLength = (item.value / total) * circumference;
+          const offset = currentOffset;
+          currentOffset += strokeLength;
+
+          return (
+            <circle
+              key={i}
+              cx="50"
+              cy="50"
+              r={radius}
+              fill="none"
+              stroke={item.color}
+              strokeWidth="12"
+              strokeDasharray={`${strokeLength} ${circumference - strokeLength}`}
+              strokeDashoffset={-offset}
+              transform="rotate(-90 50 50)"
+              className="transition-all duration-500 hover:opacity-80 cursor-pointer"
+            />
+          );
+        })}
+        {centerValue !== undefined && (
+          <>
+            <text x="50" y="46" textAnchor="middle" className="fill-gray-800 font-bold" style={{ fontSize: '12px' }}>
+              {centerValue}
+            </text>
+            {centerLabel && (
+              <text x="50" y="58" textAnchor="middle" className="fill-gray-500" style={{ fontSize: '6px' }}>
+                {centerLabel}
+              </text>
+            )}
+          </>
+        )}
+      </svg>
+      <div className="mt-3 flex flex-wrap justify-center gap-2">
+        {data.map((item, i) => (
+          <div key={i} className="flex items-center gap-1 text-xs">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+            <span className="text-gray-600">{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const ReportHeatmap: React.FC<{
+  data: number[][];
+  dayLabels?: string[];
+  hourLabels?: number[];
+}> = ({ data, dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], hourLabels }) => {
+  if (!data || data.length === 0) return <div className="text-gray-400 text-center py-8">No data available</div>;
+
+  const maxValue = Math.max(...data.flat(), 1);
+  const hours = hourLabels || Array.from({ length: 24 }, (_, i) => i);
+
+  const getColor = (value: number) => {
+    const intensity = value / maxValue;
+    if (intensity === 0) return '#f3f4f6';
+    if (intensity < 0.25) return '#dbeafe';
+    if (intensity < 0.5) return '#93c5fd';
+    if (intensity < 0.75) return '#3b82f6';
+    return '#1d4ed8';
+  };
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[600px]">
+        <div className="flex">
+          <div className="w-12" />
+          {hours.filter((_, i) => i % 3 === 0).map(h => (
+            <div key={h} className="flex-1 text-[10px] text-gray-400 text-center font-medium">
+              {h}:00
+            </div>
+          ))}
+        </div>
+        {dayLabels.map((day, dayIdx) => (
+          <div key={day} className="flex items-center">
+            <div className="w-12 text-xs font-semibold text-gray-600 pr-2">{day}</div>
+            <div className="flex-1 flex gap-[2px]">
+              {hours.map(hour => (
+                <div
+                  key={`${day}-${hour}`}
+                  className="flex-1 h-6 rounded-sm cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all"
+                  style={{ backgroundColor: getColor(data[dayIdx]?.[hour] || 0) }}
+                  title={`${day} ${hour}:00 - ${data[dayIdx]?.[hour] || 0} orders`}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- KPI Card Component ---
+const KPICard: React.FC<{
+  title: string;
+  value: string | number;
+  change?: number;
+  changeLabel?: string;
+  icon: React.ReactNode;
+  color: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'cyan';
+  subtitle?: string;
+}> = ({ title, value, change, changeLabel, icon, color, subtitle }) => {
+  const colorClasses = {
+    blue: 'bg-blue-50 text-blue-600 border-blue-200',
+    green: 'bg-green-50 text-green-600 border-green-200',
+    purple: 'bg-purple-50 text-purple-600 border-purple-200',
+    orange: 'bg-orange-50 text-orange-600 border-orange-200',
+    red: 'bg-red-50 text-red-600 border-red-200',
+    cyan: 'bg-cyan-50 text-cyan-600 border-cyan-200'
+  };
+
+  const iconBgClasses = {
+    blue: 'bg-blue-100',
+    green: 'bg-green-100',
+    purple: 'bg-purple-100',
+    orange: 'bg-orange-100',
+    red: 'bg-red-100',
+    cyan: 'bg-cyan-100'
+  };
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">{title}</p>
+          <p className="text-2xl font-bold text-gray-900">{value}</p>
+          {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+          {change !== undefined && (
+            <p className={`text-sm font-semibold mt-2 flex items-center gap-1 ${change >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+              {change >= 0 ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
+              {Math.abs(change).toFixed(1)}% {changeLabel || 'vs last period'}
+            </p>
+          )}
+        </div>
+        <div className={`p-3 rounded-xl ${iconBgClasses[color]}`}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
 };
 
 const generateInvoice = async (order: any, tenantId: string) => {
@@ -602,13 +924,18 @@ const StaffLoginModal: React.FC<{ isOpen: boolean; type: 'admin' | 'driver' | nu
           .from('staff')
           .select('*')
           .eq('login_id', email.toLowerCase())
-          .eq('hashed_password', password)
           .eq('tenant_id', currentTenantId)
           .eq('is_active', true)
           .maybeSingle();
 
         if (dbError || !data) {
-          setError('Invalid credentials or account inactive');
+          setError('Account not found or inactive');
+          return;
+        }
+
+        const isValidPassword = await verifyPassword(password, data.hashed_password);
+        if (!isValidPassword) {
+          setError('Invalid password');
           return;
         }
 
@@ -623,13 +950,18 @@ const StaffLoginModal: React.FC<{ isOpen: boolean; type: 'admin' | 'driver' | nu
           .from('cp_drivers')
           .select('*')
           .eq('email', email.toLowerCase())
-          .eq('password_hash', password)
           .eq('tenant_id', currentTenantId)
           .eq('active', true)
           .maybeSingle();
 
         if (dbError || !data) {
-          setError('Driver not found, invalid password, or inactive');
+          setError('Driver not found or inactive');
+          return;
+        }
+
+        const isValidPassword = await verifyPassword(password, data.password_hash);
+        if (!isValidPassword) {
+          setError('Invalid password');
           return;
         }
 
@@ -674,7 +1006,8 @@ const StaffLoginModal: React.FC<{ isOpen: boolean; type: 'admin' | 'driver' | nu
         return;
       }
 
-      // Create new driver
+      // Create new driver with hashed password
+      const hashedPassword = await hashPassword(password);
       const { data, error: insertError } = await supabase
         .from('cp_drivers')
         .insert([{
@@ -682,7 +1015,7 @@ const StaffLoginModal: React.FC<{ isOpen: boolean; type: 'admin' | 'driver' | nu
           email: signupData.email.toLowerCase(),
           phone: signupData.phone,
           vehicle_reg: signupData.vehicle_reg,
-          password_hash: password, // In production, hash this!
+          password_hash: hashedPassword,
           active: true,
           working_days: [],
           tenant_id: currentTenantId
@@ -1000,7 +1333,7 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
 };
 
 
-const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; tenantId: string }> = ({ user, onUpdateUser, tenantId }) => {
+const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; tenantId: string; setPage?: (page: Page) => void; onLogout?: () => void }> = ({ user, onUpdateUser, tenantId, setPage, onLogout }) => {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -1056,8 +1389,6 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
 
   // Real-time subscription for order updates
   useEffect(() => {
-    console.log('--- CUSTOMER: SETTING UP REALTIME SUBSCRIPTION FOR ORDERS ---');
-
     const ordersSubscription = supabase
       .channel('customer-orders-changes')
       .on(
@@ -1070,7 +1401,6 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
           // However, we re-fetch below with tenant_id filter so it's safe.
         },
         (payload) => {
-          console.log('Customer: Order change detected:', payload);
           // Refresh orders when any change occurs
           const refreshOrders = async () => {
             const { data: orderData } = await supabase
@@ -1087,7 +1417,6 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
       .subscribe();
 
     return () => {
-      console.log('--- CUSTOMER: CLEANING UP REALTIME SUBSCRIPTION ---');
       supabase.removeChannel(ordersSubscription);
     };
   }, [user.email]);
@@ -1431,7 +1760,8 @@ const BackOfficePage: React.FC<{
   onTenantUpdate?: (tenant: any) => void;
   companySettings: any;
 }> = ({ tenant, availableSlots, setAvailableSlots, deliveryOptions, setDeliveryOptions, onLogout, darkMode, toggleDark, onTenantUpdate, companySettings }) => {
-  const [activeTab, setActiveTab] = useState<'reports' | 'store' | 'service' | 'orders' | 'customers' | 'subscriptions' | 'offers' | 'schedule' | 'marketing' | 'drivers' | 'billing'>('orders');
+  const [activeTab, setActiveTab] = useState<'reports' | 'store' | 'service' | 'orders' | 'customers' | 'corporate' | 'subscriptions' | 'offers' | 'schedule' | 'marketing' | 'drivers' | 'billing' | 'invoices'>('orders');
+  const [showHelpGuide, setShowHelpGuide] = useState(false);
   const [saved, setSaved] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -1475,15 +1805,55 @@ const BackOfficePage: React.FC<{
     loadServices();
   }, [tenant.id]);
 
-  const clearAllServices = async () => {
-    if (!confirm('Are you sure you want to delete ALL services and categories? This cannot be undone.')) return;
-    setIsSavingPromo(true);
-    await supabase.from('cp_services').delete().eq('tenant_id', tenant.id);
-    await supabase.from('cp_categories').delete().eq('tenant_id', tenant.id);
-    setIsSavingPromo(false);
-    fetchServices();
-    fetchCategories();
-    alert('All services and categories cleared!');
+  // Confirmation modal handlers
+  const showDeleteConfirm = (type: 'service' | 'category' | 'all', id?: string, name?: string) => {
+    setDeleteConfirm({ type, id, name });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirm) return;
+
+    if (deleteConfirm.type === 'all') {
+      await executeClearAll();
+    } else if (deleteConfirm.type === 'service' && deleteConfirm.id) {
+      await executeDeleteService(deleteConfirm.id);
+    } else if (deleteConfirm.type === 'category' && deleteConfirm.name) {
+      await executeDeleteCategory(deleteConfirm.name);
+    }
+
+    setDeleteConfirm(null);
+  };
+
+  const executeClearAll = async () => {
+    try {
+      const { data: deletedServices, error: servicesError } = await supabase
+        .from('cp_services')
+        .delete()
+        .eq('tenant_id', tenant.id)
+        .select();
+
+      if (servicesError) {
+        console.error('Error deleting services:', servicesError);
+        return;
+      }
+
+      const { data: deletedCategories, error: categoriesError } = await supabase
+        .from('cp_categories')
+        .delete()
+        .eq('tenant_id', tenant.id)
+        .select();
+
+      if (categoriesError) {
+        console.error('Error deleting categories:', categoriesError);
+        return;
+      }
+
+      console.log(`Deleted ${deletedServices?.length || 0} services and ${deletedCategories?.length || 0} categories`);
+      setServices([]);
+      setCategories([]);
+    } catch (err: any) {
+      console.error('Unexpected error:', err);
+    }
   };
 
 
@@ -1558,6 +1928,8 @@ const BackOfficePage: React.FC<{
   const [categories, setCategories] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoiceSearch, setInvoiceSearch] = useState('');
   const [customerFilter, setCustomerFilter] = useState({ name: '', phone: '', postcode: '' });
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [settings, setSettings] = useState<any>({});
@@ -1580,35 +1952,95 @@ const BackOfficePage: React.FC<{
   const [sortLocked, setSortLocked] = useState(true);
   const [draggedItem, setDraggedItem] = useState<number | null>(null);
   const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [editingService, setEditingService] = useState<any>(null);
-  const [newService, setNewService] = useState({ category: '', name: '', price: '' });
+  const [newService, setNewService] = useState({ category: '', subcategory: '', name: '', price: '' });
   const [isAddingService, setIsAddingService] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'service' | 'category' | 'all'; id?: string; name?: string } | null>(null);
+  const [corporateAccounts, setCorporateAccounts] = useState<any[]>([]);
+  const [newCorporate, setNewCorporate] = useState({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30 });
+  const [editingCorporate, setEditingCorporate] = useState<any>(null);
 
   // Enhanced category syncing - ensure all categories used in services exist in the categories table
   const syncCategories = async () => {
-    if (services.length === 0) return;
+    if (services.length === 0) {
+      console.log('No services to sync categories from');
+      return;
+    }
 
     const usedCatNames = Array.from(new Set(services.map(s => s.category).filter(Boolean)));
     const existingCatNames = categories.map(c => c.name);
     const toCreate = usedCatNames.filter(name => !existingCatNames.includes(name));
 
+    console.log('Category sync check:', { usedCatNames, existingCatNames, toCreate });
+
     if (toCreate.length > 0) {
       console.log('Syncing missing categories:', toCreate);
-      const newCats = toCreate.map((name, idx) => ({
-        name,
-        sort_order: categories.length + idx + 10,
-        tenant_id: tenant.id
-      }));
-      const { error } = await supabase.from('cp_categories').insert(newCats);
-      if (!error) fetchCategories();
+
+      // Insert categories one by one, update tenant_id if already exists
+      let successCount = 0;
+      for (let i = 0; i < toCreate.length; i++) {
+        const name = toCreate[i];
+
+        // First try to update existing category to our tenant
+        const { data: updated, error: updateError } = await supabase
+          .from('cp_categories')
+          .update({ tenant_id: tenant.id })
+          .eq('name', name)
+          .select();
+
+        if (updateError) {
+          // If update fails, try insert
+          const { data: inserted, error: insertError } = await supabase
+            .from('cp_categories')
+            .insert({
+              name,
+              sort_order: categories.length + i + 10,
+              tenant_id: tenant.id
+            })
+            .select();
+
+          if (insertError) {
+            console.error(`Error syncing category "${name}":`, insertError);
+          } else {
+            console.log(`Category "${name}" inserted:`, inserted);
+            successCount++;
+          }
+        } else if (updated && updated.length > 0) {
+          console.log(`Category "${name}" updated to tenant:`, updated);
+          successCount++;
+        } else {
+          // No rows updated means it doesn't exist, insert it
+          const { data: inserted, error: insertError } = await supabase
+            .from('cp_categories')
+            .insert({
+              name,
+              sort_order: categories.length + i + 10,
+              tenant_id: tenant.id
+            })
+            .select();
+
+          if (insertError) {
+            console.error(`Error inserting category "${name}":`, insertError);
+          } else {
+            console.log(`Category "${name}" inserted:`, inserted);
+            successCount++;
+          }
+        }
+      }
+
+      console.log(`Synced ${successCount} of ${toCreate.length} categories`);
+      fetchCategories();
+    } else {
+      console.log('All categories already synced');
     }
   };
 
   useEffect(() => {
-    if (services.length > 0) {
+    if (services.length > 0 && categories.length >= 0) {
       syncCategories();
     }
-  }, [services.length, categories.length]);
+  }, [services.length]);
   const [voucherCode, setVoucherCode] = useState('');
   const [isRedeeming, setIsRedeeming] = useState(false);
 
@@ -1648,6 +2080,7 @@ const BackOfficePage: React.FC<{
   const fetchEmailTemplates = async () => { const { data } = await supabase.from('cp_email_templates').select('*').eq('tenant_id', tenant.id); if (data && data.length > 0) { setEmailTemplates(data); if (!selectedTemplateId) setSelectedTemplateId(data[0].id); } };
   const fetchPromotions = async () => { const { data } = await supabase.from('cp_promotions').select('*').eq('tenant_id', tenant.id); if (data) setPromotions(data); };
   const fetchCustomers = async () => { const { data } = await supabase.from('cp_customers').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }); if (data) setCustomers(data); };
+  const fetchInvoices = async () => { const { data } = await supabase.from('cp_invoices').select('*, cp_customers(name, email)').eq('tenant_id', tenant.id).order('created_at', { ascending: false }); if (data) setInvoices(data); };
   const fetchCategories = async () => { const { data } = await supabase.from('cp_categories').select('*').eq('tenant_id', tenant.id).order('sort_order', { ascending: true }); if (data) setCategories(data); };
   const fetchServices = async () => {
     try {
@@ -1692,41 +2125,68 @@ const BackOfficePage: React.FC<{
     // Update locally for immediate feedback
     setCategories(newCategories);
 
-    // Batch update in Database for efficiency
-    const updates = newCategories.map((cat, idx) => ({
-      ...cat,
-      sort_order: idx,
-      tenant_id: tenant.id
-    }));
+    // Update each category's sort_order individually using name as identifier
+    let hasError = false;
+    for (let idx = 0; idx < newCategories.length; idx++) {
+      const cat = newCategories[idx];
+      const { error } = await supabase.from('cp_categories')
+        .update({ sort_order: idx })
+        .eq('name', cat.name)
+        .eq('tenant_id', tenant.id);
+      if (error) {
+        console.error('Error saving order:', error);
+        hasError = true;
+        break;
+      }
+    }
 
-    const { error } = await supabase.from('cp_categories').upsert(updates);
-
-    if (error) {
-      console.error('Error saving order:', error);
-      alert('Failed to save order: ' + error.message);
+    if (hasError) {
+      alert('Failed to save order');
       fetchCategories(); // Revert on error
     } else {
       fetchCategories();
     }
   };
 
-  const deleteCategory = async (id: string) => {
-    if (!id) return;
-    if (window.confirm("Are you sure you want to delete this category? This will not delete the services, but they will become uncategorized.")) {
-      try {
-        console.log(`Deleting category ${id} for tenant ${tenant.id}`);
-        const { error } = await supabase.from('cp_categories').delete().eq('id', id).eq('tenant_id', tenant.id);
-        if (error) {
-          console.error('Delete category error:', error);
-          alert('Failed to delete category: ' + error.message);
-        } else {
-          console.log('Delete category successful');
-          await fetchCategories();
-        }
-      } catch (err: any) {
-        console.error('Unexpected error during category delete:', err);
-        alert('An unexpected error occurred: ' + err.message);
+  const deleteCategory = (categoryName: string) => {
+    if (!categoryName) return;
+    showDeleteConfirm('category', undefined, categoryName);
+  };
+
+  const executeDeleteCategory = async (categoryName: string) => {
+    console.log(`Deleting category "${categoryName}" and its services for tenant ${tenant.id}`);
+    try {
+      // First delete all services in this category
+      const { data: deletedServices, error: servicesError } = await supabase
+        .from('cp_services')
+        .delete()
+        .eq('category', categoryName)
+        .eq('tenant_id', tenant.id)
+        .select();
+
+      if (servicesError) {
+        console.error('Delete services error:', servicesError);
+      } else {
+        console.log(`Deleted ${deletedServices?.length || 0} services from category "${categoryName}"`);
+        setServices(services.filter(s => s.category !== categoryName));
       }
+
+      // Then delete the category itself
+      const { data, error } = await supabase
+        .from('cp_categories')
+        .delete()
+        .eq('name', categoryName)
+        .eq('tenant_id', tenant.id)
+        .select();
+
+      if (error) {
+        console.error('Delete category error:', error);
+      } else {
+        console.log('Delete category successful');
+        setCategories(categories.filter(c => c.name !== categoryName));
+      }
+    } catch (err: any) {
+      console.error('Unexpected error during category delete:', err);
     }
   };
 
@@ -1756,10 +2216,10 @@ const BackOfficePage: React.FC<{
     if (error) {
       alert('Failed to add service: ' + error.message);
     } else {
-      setNewService({ category: '', name: '', price: '' });
+      setNewService({ category: '', subcategory: '', name: '', price: '' });
       fetchServices();
       // Ensure category exists in categories table too
-      const { data: exist } = await supabase.from('cp_categories').select('id').eq('name', newService.category).eq('tenant_id', tenant.id).maybeSingle();
+      const { data: exist } = await supabase.from('cp_categories').select('name').eq('name', newService.category).eq('tenant_id', tenant.id).maybeSingle();
       if (!exist) {
         await supabase.from('cp_categories').insert([{ name: newService.category, sort_order: 99, tenant_id: tenant.id }]);
         fetchCategories();
@@ -1937,63 +2397,56 @@ const BackOfficePage: React.FC<{
   const saveCategory = async () => {
     if (!editingCategory) return;
 
-    // Find old name to update related services
-    const oldCat = categories.find(c => c.id === editingCategory.id);
-    const oldName = oldCat?.name;
+    const oldName = editingCategory.originalName || editingCategory.name;
+    const newName = editingCategory.name;
+
+    if (oldName === newName) {
+      setEditingCategory(null);
+      return;
+    }
 
     const { error } = await supabase.from('cp_categories')
-      .update({ name: editingCategory.name })
-      .eq('id', editingCategory.id)
+      .update({ name: newName })
+      .eq('name', oldName)
       .eq('tenant_id', tenant.id);
 
     if (error) {
       alert('Failed to save category: ' + error.message);
     } else {
-      // If name changed, update all services in this category
-      if (oldName && oldName !== editingCategory.name) {
-        console.log(`Updating services from category "${oldName}" to "${editingCategory.name}"`);
-        await supabase.from('cp_services')
-          .update({ category: editingCategory.name })
-          .eq('category', oldName)
-          .eq('tenant_id', tenant.id);
-        fetchServices();
-      }
+      // Update all services in this category to new name
+      console.log(`Updating services from category "${oldName}" to "${newName}"`);
+      await supabase.from('cp_services')
+        .update({ category: newName })
+        .eq('category', oldName)
+        .eq('tenant_id', tenant.id);
+      fetchServices();
       setEditingCategory(null);
       fetchCategories();
     }
   };
 
-  const deleteService = async (id: string, name: string) => {
-    if (!id) {
-      console.warn('Attempted to delete service with no ID');
-      return;
-    }
+  const deleteService = (id: string, name: string) => {
+    if (!id) return;
+    showDeleteConfirm('service', id, name);
+  };
 
-    // Robust confirmation
-    const userInput = window.prompt(`To permanently delete service "${name}", type "DELETE" below:`);
-    if (userInput !== 'DELETE') {
-      return;
-    }
-
+  const executeDeleteService = async (id: string) => {
     try {
-      console.log(`Deleting service ${id} (${name}) for tenant ${tenant.id}`);
-      const { error } = await supabase.from('cp_services')
+      console.log(`Deleting service ${id} for tenant ${tenant.id}`);
+      const { data, error } = await supabase.from('cp_services')
         .delete()
         .eq('id', id)
-        .eq('tenant_id', tenant.id);
+        .eq('tenant_id', tenant.id)
+        .select();
 
       if (error) {
         console.error('Delete error:', error);
-        alert('Failed to delete service: ' + error.message);
       } else {
-        console.log('Delete successful');
-        // Optimistic update or fetch
-        await fetchServices();
-        alert('Service deleted successfully.');
+        console.log('Delete successful, rows affected:', data?.length);
+        setServices(services.filter(s => s.id !== id));
       }
     } catch (err: any) {
       console.error('Unexpected error during delete:', err);
-      alert('An unexpected error occurred: ' + err.message);
     }
   };
 
@@ -2148,9 +2601,9 @@ const BackOfficePage: React.FC<{
       active: true
     };
 
-    // Only include password if provided or if it's a new driver
+    // Only include password if provided or if it's a new driver (hash the password)
     if (driverForm.password_hash) {
-      driverData.password_hash = driverForm.password_hash;
+      driverData.password_hash = await hashPassword(driverForm.password_hash);
     }
 
     if (editingDriver) {
@@ -2420,27 +2873,89 @@ const BackOfficePage: React.FC<{
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target?.result as string;
-      if (!text) return;
+    const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
 
-      const lines = text.split(/\r\n|\n/);
+    const processRows = async (rows: any[][]) => {
       const newServices: any[] = [];
       const newCategories = new Set<string>();
 
-      const startIdx = lines[0]?.toLowerCase().includes('category') ? 1 : 0;
+      // Detect format from header row
+      const headerRow = rows[0]?.map(h => String(h || '').toLowerCase()) || [];
+      const menu1Idx = headerRow.findIndex(h => h.includes('menu1'));
+      const menu2Idx = headerRow.findIndex(h => h.includes('menu2'));
+      const titleIdx = headerRow.findIndex(h => h.includes('title'));
+      const priceIdx = headerRow.findIndex(h => h.includes('price') || h.includes('pricelevel'));
+      const categoryIdx = headerRow.findIndex(h => h.includes('category'));
+      const nameIdx = headerRow.findIndex(h => h.includes('name') || h.includes('service'));
 
-      for (let i = startIdx; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
+      const isNewFormat = menu1Idx !== -1 && titleIdx !== -1 && priceIdx !== -1;
+      const isOldFormat = categoryIdx !== -1 && nameIdx !== -1;
+      const hasHeader = isNewFormat || isOldFormat || headerRow.some(h => h.includes('menu') || h.includes('category') || h.includes('title'));
+      const startIdx = hasHeader ? 1 : 0;
 
-        const cols = line.split(',');
-        if (cols.length >= 3) {
-          const category = cols[0].trim().replace(/^"|"$/g, '');
-          const name = cols[1].trim().replace(/^"|"$/g, '');
-          const priceStr = cols[2].trim().replace(/^"|"$/g, '').replace(/[^0-9.]/g, '');
-          const price = parseFloat(priceStr);
+      console.log('Detected format:', { isNewFormat, isOldFormat, hasHeader, headerRow });
+
+      for (let i = startIdx; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.every(cell => !cell)) continue;
+
+        if (isNewFormat) {
+          // New format: Menu1, Menu2, Title, Pricelevel1
+          const menu1 = String(row[menu1Idx] || '').trim();
+          const title = String(row[titleIdx] || '').trim();
+          const priceVal = row[priceIdx];
+          const price = typeof priceVal === 'number' ? priceVal : parseFloat(String(priceVal || '').replace(/[^0-9.]/g, ''));
+
+          if (menu1 && title && !isNaN(price)) {
+            newServices.push({
+              category: menu1,
+              name: title,
+              price_numeric: price,
+              price_display: `£${price.toFixed(2)}`,
+              tenant_id: tenant.id
+            });
+            newCategories.add(menu1);
+          }
+        } else if (isOldFormat) {
+          // Old format with headers: Category, Name, Price
+          const category = String(row[categoryIdx] || '').trim();
+          const name = String(row[nameIdx] || '').trim();
+          const priceCol = row[priceIdx !== -1 ? priceIdx : 2];
+          const price = typeof priceCol === 'number' ? priceCol : parseFloat(String(priceCol || '').replace(/[^0-9.]/g, ''));
+
+          if (category && name && !isNaN(price)) {
+            newServices.push({
+              category,
+              name,
+              price_numeric: price,
+              price_display: `£${price.toFixed(2)}`,
+              tenant_id: tenant.id
+            });
+            newCategories.add(category);
+          }
+        } else if (row.length >= 4) {
+          // Assume Menu1, Menu2, Title, Price format by position
+          const menu1 = String(row[0] || '').trim();
+          const title = String(row[2] || '').trim();
+          const priceVal = row[3];
+          const price = typeof priceVal === 'number' ? priceVal : parseFloat(String(priceVal || '').replace(/[^0-9.]/g, ''));
+
+          if (menu1 && title && !isNaN(price)) {
+            newServices.push({
+              category: menu1,
+              name: title,
+              price_numeric: price,
+              price_display: `£${price.toFixed(2)}`,
+              tenant_id: tenant.id
+            });
+            newCategories.add(menu1);
+          }
+        } else if (row.length >= 3) {
+          // Old format: Category, Name, Price by position
+          const category = String(row[0] || '').trim();
+          const name = String(row[1] || '').trim();
+          const priceVal = row[2];
+          const price = typeof priceVal === 'number' ? priceVal : parseFloat(String(priceVal || '').replace(/[^0-9.]/g, ''));
 
           if (category && name && !isNaN(price)) {
             newServices.push({
@@ -2458,7 +2973,7 @@ const BackOfficePage: React.FC<{
       if (newServices.length > 0) {
         const categoryData = Array.from(newCategories).map((name, idx) => ({ name, sort_order: idx + 99 }));
         for (const cat of categoryData) {
-          const { data: exist } = await supabase.from('cp_categories').select('id').eq('name', cat.name).eq('tenant_id', tenant.id).single();
+          const { data: exist } = await supabase.from('cp_categories').select('name').eq('name', cat.name).eq('tenant_id', tenant.id).maybeSingle();
           if (!exist) await supabase.from('cp_categories').insert([{ ...cat, tenant_id: tenant.id }]);
         }
 
@@ -2472,18 +2987,50 @@ const BackOfficePage: React.FC<{
           alert('Import failed: ' + error.message);
         }
       } else {
-        alert('No valid rows found. CSV Format: Category,Name,Price');
+        alert('No valid rows found. Supported formats:\n- Menu1, Menu2, Title, Pricelevel1\n- Category, Name, Price');
       }
     };
-    reader.readAsText(file);
+
+    if (isExcel) {
+      // Handle Excel files
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows: any[][] = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+          await processRows(rows);
+        } catch (err: any) {
+          alert('Failed to read Excel file: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      // Handle CSV files
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const text = e.target?.result as string;
+        if (!text) return;
+        const rows = text.split(/\r\n|\n/).map(line => line.split(',').map(cell => cell.trim().replace(/^"|"$/g, '')));
+        await processRows(rows);
+      };
+      reader.readAsText(file);
+    }
     event.target.value = '';
   };
 
   return (
-    <div className="pt-10 pb-20 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in dark:text-gray-100 transition-colors">
+    <div className="pt-10 pb-20 mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in dark:text-gray-100 transition-colors max-w-[1800px]">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b border-gray-200 dark:border-gray-800 pb-4">
         <div><h1 className="font-heading font-bold text-3xl text-gray-900 dark:text-gray-100">Back Office</h1><p className="text-gray-600 dark:text-gray-400">Administrative Dashboard</p></div>
         <div className="flex items-center gap-2 mt-4 md:mt-0">
+          <button
+            onClick={() => setShowHelpGuide(true)}
+            className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:from-purple-600 hover:to-indigo-700 transition-all shadow-lg hover:shadow-purple-500/25 flex items-center gap-2 transform hover:scale-105 active:scale-95"
+          >
+            <FileText size={18} /> How to Use
+          </button>
           <ThemeToggle darkMode={darkMode} toggle={toggleDark} />
           <div className="bg-blue-50 dark:bg-blue-900/20 text-trust-blue dark:text-trust-blue-light px-3 py-1 rounded-full text-xs font-bold uppercase">Admin Mode</div>
           <button onClick={onLogout} className="bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 dark:hover:bg-red-900/30 transition flex items-center gap-2">
@@ -2495,6 +3042,7 @@ const BackOfficePage: React.FC<{
         <button onClick={() => setActiveTab('orders')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'orders' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><ShoppingBag size={16} /> Orders</button>
         <button onClick={() => setActiveTab('store')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'store' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Settings size={16} /> Store Details</button>
         <button onClick={() => setActiveTab('customers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'customers' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Users size={16} /> Customers</button>
+        <button onClick={() => setActiveTab('corporate')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'corporate' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Building2 size={16} /> Corporate</button>
         <button onClick={() => setActiveTab('subscriptions')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'subscriptions' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Repeat size={16} /> Subscriptions</button>
         <button onClick={() => setActiveTab('offers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'offers' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Tag size={16} /> Offers & Loyalty</button>
         <button onClick={() => setActiveTab('schedule')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'schedule' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Clock size={16} /> Schedule</button>
@@ -2599,25 +3147,6 @@ const BackOfficePage: React.FC<{
             </div>
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingBag size={20} className="text-trust-blue" /> Recent Orders (Store Copy)</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 text-gray-500 font-medium"><tr><th className="px-4 py-3">ID</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th></tr></thead>
-                <tbody className="divide-y divide-gray-100">
-                  {orders.slice(0, 5).map(order => (
-                    <tr key={order.id}>
-                      <td className="px-4 py-3 font-bold">#{order.readable_id}</td>
-                      <td className="px-4 py-3">{order.customer_name}</td>
-                      <td className="px-4 py-3">£{(order.items?.reduce((acc: number, item: any) => acc + (parseFloat(item.price) * item.quantity), 0) - (order.discount_amount || 0)).toFixed(2)}</td>
-                      <td className="px-4 py-3"><span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold uppercase">{order.status}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button onClick={() => setActiveTab('orders')} className="mt-4 text-trust-blue text-sm font-bold hover:underline flex items-center gap-1">View All Orders <ArrowRight size={14} /></button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -2706,6 +3235,247 @@ const BackOfficePage: React.FC<{
 
       {/* Other tabs */}
       {activeTab === 'customers' && (<div className="space-y-6"><div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"><h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Users size={20} className="text-trust-blue" /> Customer Account Management</h3><div className="grid grid-cols-1 md:grid-cols-3 gap-4"><input type="text" placeholder="Filter by Name..." value={customerFilter.name} onChange={e => setCustomerFilter({ ...customerFilter, name: e.target.value })} className="border p-2 rounded bg-gray-50 text-sm" /><input type="text" placeholder="Filter by Phone..." value={customerFilter.phone} onChange={e => setCustomerFilter({ ...customerFilter, phone: e.target.value })} className="border p-2 rounded bg-gray-50 text-sm" /><input type="text" placeholder="Filter by Postcode..." value={customerFilter.postcode} onChange={e => setCustomerFilter({ ...customerFilter, postcode: e.target.value })} className="border p-2 rounded bg-gray-50 text-sm" /></div></div><div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"><div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center"><h4 className="font-bold text-gray-700">Customer List ({filteredCustomers.length})</h4><button onClick={fetchCustomers} className="text-xs text-trust-blue hover:underline">Refresh List</button></div><table className="w-full text-sm text-left"><thead className="text-gray-500 font-medium border-b border-gray-200"><tr><th className="px-6 py-3">Name</th><th className="px-6 py-3">Phone</th><th className="px-6 py-3">Email</th><th className="px-6 py-3">Loyalty Pts</th><th className="px-6 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-gray-100">{filteredCustomers.map(customer => (<tr key={customer.id} className="hover:bg-gray-50"><td className="px-6 py-4 font-medium text-gray-900">{editingCustomer?.id === customer.id ? (<input className="border rounded p-1 w-full" value={editingCustomer.name} onChange={e => setEditingCustomer({ ...editingCustomer, name: e.target.value })} />) : customer.name}</td><td className="px-6 py-4 text-gray-600">{editingCustomer?.id === customer.id ? (<input className="border rounded p-1 w-full" value={editingCustomer.phone} onChange={e => setEditingCustomer({ ...editingCustomer, phone: e.target.value })} />) : customer.phone}</td><td className="px-6 py-4 text-gray-600">{editingCustomer?.id === customer.id ? (<input className="border rounded p-1 w-full" value={editingCustomer.email} onChange={e => setEditingCustomer({ ...editingCustomer, email: e.target.value })} />) : customer.email}</td><td className="px-6 py-4"><span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-bold">{customer.loyalty_points || 0} pts</span></td><td className="px-6 py-4 text-right">{editingCustomer?.id === customer.id ? (<div className="flex justify-end gap-2"><button onClick={saveCustomer} className="text-green-600 hover:text-green-800 font-bold text-xs bg-green-50 px-3 py-1 rounded">Save</button><button onClick={() => setEditingCustomer(null)} className="text-gray-500 hover:text-gray-700 text-xs px-2">Cancel</button></div>) : (<button onClick={() => setEditingCustomer(customer)} className="inline-flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-xs font-semibold transition"><Edit3 size={12} /> Edit</button>)}</td></tr>))}</tbody></table></div></div>)}
+      {activeTab === 'corporate' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Building2 size={24} className="text-trust-blue" />
+              <h2 className="text-2xl font-bold">Corporate Accounts</h2>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <div className="text-2xl font-bold text-trust-blue">{corporateAccounts.length}</div>
+                <div className="text-xs text-gray-500">Active Accounts</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Add New Corporate Account Form */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800 p-6">
+            <h3 className="font-bold text-lg mb-4 flex items-center gap-2">
+              <Plus size={20} className="text-trust-blue" />
+              {editingCorporate ? 'Edit Corporate Account' : 'Add New Corporate Account'}
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Company Name *</label>
+                <input
+                  type="text"
+                  value={editingCorporate?.company_name || newCorporate.company_name}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, company_name: e.target.value}) : setNewCorporate({...newCorporate, company_name: e.target.value})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                  placeholder="Acme Corporation"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Contact Name</label>
+                <input
+                  type="text"
+                  value={editingCorporate?.contact_name || newCorporate.contact_name}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, contact_name: e.target.value}) : setNewCorporate({...newCorporate, contact_name: e.target.value})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                  placeholder="John Smith"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email *</label>
+                <input
+                  type="email"
+                  value={editingCorporate?.email || newCorporate.email}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, email: e.target.value}) : setNewCorporate({...newCorporate, email: e.target.value})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                  placeholder="accounts@company.com"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
+                <input
+                  type="tel"
+                  value={editingCorporate?.phone || newCorporate.phone}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, phone: e.target.value}) : setNewCorporate({...newCorporate, phone: e.target.value})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                  placeholder="020 1234 5678"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Billing Address</label>
+                <input
+                  type="text"
+                  value={editingCorporate?.address || newCorporate.address}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, address: e.target.value}) : setNewCorporate({...newCorporate, address: e.target.value})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                  placeholder="123 Business Street, London, EC1A 1AA"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Discount %</label>
+                <input
+                  type="number"
+                  value={editingCorporate?.discount_percent || newCorporate.discount_percent}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, discount_percent: parseInt(e.target.value)}) : setNewCorporate({...newCorporate, discount_percent: parseInt(e.target.value)})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                  min="0"
+                  max="50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Payment Terms (Days)</label>
+                <select
+                  value={editingCorporate?.payment_terms || newCorporate.payment_terms}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, payment_terms: parseInt(e.target.value)}) : setNewCorporate({...newCorporate, payment_terms: parseInt(e.target.value)})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                >
+                  <option value={7}>Net 7</option>
+                  <option value={14}>Net 14</option>
+                  <option value={30}>Net 30</option>
+                  <option value={60}>Net 60</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  const data = editingCorporate || newCorporate;
+                  if (!data.company_name || !data.email) {
+                    alert('Company name and email are required');
+                    return;
+                  }
+                  if (editingCorporate) {
+                    // Update existing
+                    const { error } = await supabase.from('cp_corporate_accounts').update(data).eq('id', editingCorporate.id);
+                    if (!error) {
+                      setCorporateAccounts(corporateAccounts.map(c => c.id === editingCorporate.id ? {...c, ...data} : c));
+                      setEditingCorporate(null);
+                    }
+                  } else {
+                    // Create new
+                    const { data: inserted, error } = await supabase.from('cp_corporate_accounts').insert({ ...data, tenant_id: tenant.id }).select().single();
+                    if (!error && inserted) {
+                      setCorporateAccounts([...corporateAccounts, inserted]);
+                      setNewCorporate({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30 });
+                    } else {
+                      // If table doesn't exist, store locally
+                      const newAccount = { id: Date.now().toString(), ...data, tenant_id: tenant.id, created_at: new Date().toISOString() };
+                      setCorporateAccounts([...corporateAccounts, newAccount]);
+                      setNewCorporate({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30 });
+                    }
+                  }
+                }}
+                className="bg-trust-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-trust-blue-hover transition flex items-center gap-2"
+              >
+                <Save size={16} />
+                {editingCorporate ? 'Update Account' : 'Add Corporate Account'}
+              </button>
+              {editingCorporate && (
+                <button
+                  onClick={() => setEditingCorporate(null)}
+                  className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-bold hover:bg-gray-200 transition"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Corporate Accounts List */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 flex justify-between items-center">
+              <h4 className="font-bold text-gray-700 dark:text-gray-300">Corporate Accounts ({corporateAccounts.length})</h4>
+            </div>
+            {corporateAccounts.length === 0 ? (
+              <div className="p-12 text-center text-gray-500">
+                <Building2 size={48} className="mx-auto mb-4 opacity-20" />
+                <p className="font-medium">No corporate accounts yet</p>
+                <p className="text-sm">Add your first corporate client above to start monthly invoicing</p>
+              </div>
+            ) : (
+              <table className="w-full text-sm text-left">
+                <thead className="text-gray-500 font-medium border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
+                  <tr>
+                    <th className="px-6 py-3">Company</th>
+                    <th className="px-6 py-3">Contact</th>
+                    <th className="px-6 py-3">Email</th>
+                    <th className="px-6 py-3">Discount</th>
+                    <th className="px-6 py-3">Terms</th>
+                    <th className="px-6 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {corporateAccounts.map(account => (
+                    <tr key={account.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900 dark:text-white">{account.company_name}</div>
+                        <div className="text-xs text-gray-500">{account.address}</div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{account.contact_name || '-'}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{account.email}</td>
+                      <td className="px-6 py-4">
+                        <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-1 rounded-full text-xs font-bold">{account.discount_percent}% off</span>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-400">Net {account.payment_terms}</td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            onClick={() => setEditingCorporate(account)}
+                            className="text-gray-400 hover:text-trust-blue p-1 transition"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (confirm('Delete this corporate account?')) {
+                                await supabase.from('cp_corporate_accounts').delete().eq('id', account.id);
+                                setCorporateAccounts(corporateAccounts.filter(c => c.id !== account.id));
+                              }
+                            }}
+                            className="text-gray-400 hover:text-red-500 p-1 transition"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          {/* Benefits Info */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
+                  <FileText size={20} className="text-blue-600" />
+                </div>
+                <span className="font-bold text-gray-800 dark:text-white">Monthly Invoicing</span>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Send consolidated monthly invoices instead of charging per order</p>
+            </div>
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg">
+                  <Percent size={20} className="text-green-600" />
+                </div>
+                <span className="font-bold text-gray-800 dark:text-white">Bulk Discounts</span>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Set custom discount rates for each corporate client</p>
+            </div>
+            <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-lg">
+                  <Users size={20} className="text-purple-600" />
+                </div>
+                <span className="font-bold text-gray-800 dark:text-white">Employee Allowances</span>
+              </div>
+              <p className="text-sm text-gray-600 dark:text-gray-400">Link employees to corporate accounts for automatic billing</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'offers' && (
         <div className="space-y-6 animate-fade-in">
           <div className="flex items-center gap-2 mb-4">
@@ -2938,17 +3708,17 @@ const BackOfficePage: React.FC<{
       {activeTab === 'schedule' && (<div className="space-y-6 animate-fade-in"><div className="flex items-center gap-2 mb-4"><Calendar size={24} className="text-trust-blue" /><h2 className="text-2xl font-bold">Online Order Scheduling</h2></div><div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"><div className="bg-gray-100 p-1 rounded-lg inline-flex mb-6 text-sm font-semibold text-gray-600"><div className="bg-white shadow-sm px-4 py-2 rounded text-gray-900">Collection Schedule</div><div className="px-4 py-2 opacity-50 cursor-not-allowed">Delivery Schedule</div></div><div className="space-y-4">{DAYS.map(day => { const isActive = settings[`day_active_${day}`] === 'true'; const daySlots = availableSlots.filter(s => s.day === day); return (<div key={day} className={`border rounded-xl transition-all ${isActive ? 'border-gray-300 bg-white' : 'border-gray-100 bg-gray-50'}`}><div className="flex items-center justify-between p-4"><span className={`font-bold ${isActive ? 'text-gray-800' : 'text-gray-400'}`}>{day}</span><button onClick={() => toggleDay(day)} className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out ${isActive ? 'bg-trust-blue' : 'bg-gray-300'}`}><div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${isActive ? 'translate-x-6' : 'translate-x-0'}`} /></button></div>{isActive && (<div className="px-4 pb-4 border-t border-gray-100 pt-4 animate-fade-in"><div className="flex flex-wrap gap-2 mb-3">{daySlots.map(slot => (<div key={slot.id} className="bg-blue-50 text-trust-blue px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 border border-blue-100">{slot.label} - {getNextDate(slot.day)}<button onClick={() => deleteSlot(slot.id)} className="text-blue-400 hover:text-red-500 ml-2"><X size={14} /></button></div>))}{daySlots.length === 0 && <span className="text-xs text-gray-400 italic py-1">No slots added.</span>}</div><div className="flex items-center gap-2 mt-2"><input type="text" placeholder="e.g. 09:00 - 12:00" value={newSlotTimes[day] || ''} onChange={e => setNewSlotTimes({ ...newSlotTimes, [day]: e.target.value })} className="border border-gray-300 rounded px-3 py-1.5 text-sm w-40 focus:ring-1 focus:ring-trust-blue outline-none" /><button onClick={() => addSlotToDay(day)} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition"><Plus size={14} /> Add Time Slot</button></div></div>)}</div>); })}</div></div></div>)}
 
       {activeTab === 'service' && (
-        <div className="space-y-6">
+        <div className="space-y-6 animate-fade-in">
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Upload size={20} className="text-trust-blue" /> Import Price List</h3>
             <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-lg p-6 text-center">
-              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Upload a CSV file to bulk update products, prices, and categories.</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Upload a CSV or Excel file to bulk update products, prices, and categories.</p>
               <div className="flex justify-center gap-4">
                 <label className="inline-flex items-center gap-2 bg-white dark:bg-gray-800 border border-trust-blue text-trust-blue px-6 py-2 rounded-lg font-bold cursor-pointer hover:bg-blue-50 dark:hover:bg-gray-700 transition">
-                  <Upload size={18} /> Select CSV File
-                  <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} />
+                  <Upload size={18} /> Select File (CSV/Excel)
+                  <input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={handleFileUpload} />
                 </label>
-                <button onClick={clearAllServices} className="inline-flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-6 py-2 rounded-lg font-bold hover:bg-red-100 transition">
+                <button onClick={() => showDeleteConfirm('all')} className="inline-flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-6 py-2 rounded-lg font-bold hover:bg-red-100 transition">
                   <Trash2 size={18} /> Clear All My Services
                 </button>
               </div>
@@ -2957,24 +3727,60 @@ const BackOfficePage: React.FC<{
 
           {/* Category Sorting Section */}
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-4">
               <h3 className="font-bold text-lg flex items-center gap-2">
                 <GripVertical size={20} className="text-trust-blue" />
                 Sort Service Categories
               </h3>
-              <button
-                onClick={() => setSortLocked(!sortLocked)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortLocked ? 'bg-gray-100 text-gray-600' : 'bg-trust-blue text-white shadow-md'}`}
-              >
-                {sortLocked ? <Lock size={16} /> : <Unlock size={16} />}
-                {sortLocked ? 'Locked' : 'Unlocked (Sorting On)'}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={syncCategories}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-green-50 text-green-600 border border-green-200 hover:bg-green-100 transition-all"
+                >
+                  <RefreshCw size={16} />
+                  Sync Categories
+                </button>
+                <button
+                  onClick={() => setSortLocked(!sortLocked)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${sortLocked ? 'bg-gray-100 text-gray-600' : 'bg-trust-blue text-white shadow-md'}`}
+                >
+                  {sortLocked ? <Lock size={16} /> : <Unlock size={16} />}
+                  {sortLocked ? 'Locked' : 'Unlocked (Sorting On)'}
+                </button>
+              </div>
+            </div>
+
+            {/* Category Search Filter */}
+            <div className="mb-4">
+              <div className="relative">
+                <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search categories..."
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:ring-2 focus:ring-trust-blue focus:border-transparent dark:bg-gray-800 dark:text-gray-100"
+                />
+                {categoryFilter && (
+                  <button
+                    onClick={() => setCategoryFilter('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              {categoryFilter && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Showing {categories.filter(c => c.name.toLowerCase().includes(categoryFilter.toLowerCase())).length} of {categories.length} categories
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {categories.map((cat, idx) => (
+              {categories.filter(c => c.name.toLowerCase().includes(categoryFilter.toLowerCase())).map((cat, idx) => (
                 <div
-                  key={cat.id}
+                  key={`${cat.name}-${idx}`}
                   draggable={!sortLocked && !editingCategory}
                   onDragStart={() => setDraggedItem(idx)}
                   onDragOver={(e) => {
@@ -3002,7 +3808,7 @@ const BackOfficePage: React.FC<{
                           {services.filter(s => s.category === cat.name).length} services
                         </span>
                       </div>
-                      {editingCategory?.id === cat.id ? (
+                      {editingCategory && editingCategory.originalName === cat.name ? (
                         <div className="flex items-center gap-2 mt-1">
                           <input
                             autoFocus
@@ -3022,8 +3828,8 @@ const BackOfficePage: React.FC<{
                   <div className="flex items-center gap-2 ml-4">
                     {!editingCategory && (
                       <div className="flex items-center gap-1">
-                        <button onClick={() => setEditingCategory(cat)} className="text-gray-400 hover:text-trust-blue p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition" title="Edit Category Name"><Edit3 size={16} /></button>
-                        <button onClick={() => deleteCategory(cat.id)} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition" title="Delete Category"><Trash2 size={16} /></button>
+                        <button onClick={() => setEditingCategory({ ...cat, originalName: cat.name })} className="text-gray-400 hover:text-trust-blue p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition" title="Edit Category Name"><Edit3 size={16} /></button>
+                        <button onClick={() => { console.log('Category delete clicked:', cat.name); deleteCategory(cat.name); }} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition" title="Delete Category"><Trash2 size={16} /></button>
                       </div>
                     )}
                   </div>
@@ -3035,25 +3841,25 @@ const BackOfficePage: React.FC<{
           {/* Quick Add Service Form */}
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6">
             <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Plus size={20} className="text-trust-blue" /> Add Single Service</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
               <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Category</label>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Category (Menu1)</label>
                 <input
                   list="category-list"
                   className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800"
-                  placeholder="e.g. Dry Cleaning"
+                  placeholder="e.g. Alterations"
                   value={newService.category}
                   onChange={e => setNewService({ ...newService, category: e.target.value })}
                 />
                 <datalist id="category-list">
-                  {categories.map(c => <option key={c.id} value={c.name} />)}
+                  {categories.map((c, idx) => <option key={`${c.name}-${idx}`} value={c.name} />)}
                 </datalist>
               </div>
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Service Name</label>
                 <input
                   className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800"
-                  placeholder="e.g. Suit 2pc"
+                  placeholder="e.g. Re-Hem Trousers"
                   value={newService.name}
                   onChange={e => setNewService({ ...newService, name: e.target.value })}
                 />
@@ -3083,14 +3889,14 @@ const BackOfficePage: React.FC<{
             <div className="max-h-[500px] overflow-y-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-gray-500 sticky top-0">
-                  <tr><th className="px-6 py-3">Category</th><th className="px-6 py-3">Service Name</th><th className="px-6 py-3 text-right">Price</th><th className="px-6 py-3 text-right">Actions</th></tr>
+                  <tr><th className="px-4 py-3">Category</th><th className="px-4 py-3">Service Name</th><th className="px-4 py-3 text-right">Price</th><th className="px-4 py-3 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                   {services.length === 0 && (<tr><td colSpan={4} className="p-6 text-center text-gray-500">No services found.</td></tr>)}
                   {services.map(svc => (
                     <tr key={svc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                      <td className="px-6 py-3 font-medium text-gray-500">{svc.category}</td>
-                      <td className="px-6 py-3 text-gray-900 dark:text-gray-100">
+                      <td className="px-4 py-3 font-medium text-gray-500">{svc.category}</td>
+                      <td className="px-4 py-3 text-gray-900 dark:text-gray-100">
                         {editingService?.id === svc.id ? (
                           <input
                             className="border rounded px-2 py-1 text-sm font-bold w-full dark:bg-gray-800"
@@ -3117,7 +3923,7 @@ const BackOfficePage: React.FC<{
                         ) : (
                           <div className="flex justify-end gap-2">
                             <button onClick={() => setEditingService(svc)} className="text-gray-400 hover:text-trust-blue p-1 transition"><Edit3 size={14} /></button>
-                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); deleteService(svc.id, svc.name); }} className="text-gray-400 hover:text-red-500 p-1 transition"><Trash2 size={14} /></button>
+                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log('Delete clicked for:', svc.id, svc.name); deleteService(svc.id, svc.name); }} className="text-gray-400 hover:text-red-500 p-1 transition"><Trash2 size={14} /></button>
                           </div>
                         )}
                       </td>
@@ -3133,6 +3939,90 @@ const BackOfficePage: React.FC<{
       {activeTab === 'marketing' && (
         <div className="space-y-6 animate-fade-in">
           <div className="flex items-center gap-2 mb-4"><Mail size={24} className="text-trust-blue" /><h2 className="text-2xl font-bold">Marketing & Promotions</h2></div>
+
+          {/* Referral Program Section */}
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-green-500 p-3 rounded-xl shadow-md">
+                  <Gift size={24} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-gray-900 dark:text-white">Referral Program</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Give £5, Get £5 - Grow your business through word of mouth</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-green-600">{customers.filter(c => c.referred_by).length}</div>
+                <div className="text-xs text-gray-500">Total Referrals</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-100 dark:border-gray-700">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Referral Reward</div>
+                <div className="text-lg font-bold text-gray-900 dark:text-white">£5.00 Credit</div>
+                <div className="text-xs text-gray-500">For existing customers</div>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-100 dark:border-gray-700">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">New Customer Bonus</div>
+                <div className="text-lg font-bold text-gray-900 dark:text-white">£5.00 Off</div>
+                <div className="text-xs text-gray-500">First order discount</div>
+              </div>
+              <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-100 dark:border-gray-700">
+                <div className="text-xs font-bold text-gray-500 uppercase mb-1">Your Referral Code</div>
+                <div className="flex items-center gap-2">
+                  <code className="text-lg font-bold text-green-600 bg-green-50 dark:bg-green-900/30 px-2 py-1 rounded">{tenant?.name?.replace(/\s+/g, '').toUpperCase().slice(0, 6) || 'REFER'}</code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${tenant?.name?.replace(/\s+/g, '').toUpperCase().slice(0, 6) || 'REFER'}`);
+                      alert('Referral code copied!');
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-3">
+                <span className="font-bold text-sm text-gray-700 dark:text-gray-300">Share with customers</span>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => {
+                    const msg = `Get £5 off your first order at ${tenant?.name}! Use referral code: ${tenant?.name?.replace(/\s+/g, '').toUpperCase().slice(0, 6) || 'REFER'}`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-bold transition"
+                >
+                  <MessageCircle size={16} /> WhatsApp
+                </button>
+                <button
+                  onClick={() => {
+                    const subject = `Get £5 off at ${tenant?.name}`;
+                    const body = `Hey! I thought you'd like this dry cleaning service. Get £5 off your first order using my referral code: ${tenant?.name?.replace(/\s+/g, '').toUpperCase().slice(0, 6) || 'REFER'}`;
+                    window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-bold transition"
+                >
+                  <Mail size={16} /> Email
+                </button>
+                <button
+                  onClick={() => {
+                    const msg = `Get £5 off your first order at ${tenant?.name}! Use code: ${tenant?.name?.replace(/\s+/g, '').toUpperCase().slice(0, 6) || 'REFER'}`;
+                    navigator.clipboard.writeText(msg);
+                    alert('Message copied to clipboard!');
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-bold transition"
+                >
+                  <Copy size={16} /> Copy Message
+                </button>
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -3521,6 +4411,195 @@ const BackOfficePage: React.FC<{
               </div>
             </div>
           </div>
+
+          {/* Route Optimization Section */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <MapPin size={20} className="text-trust-blue" />
+                Route Optimization
+              </h3>
+              <div className="flex items-center gap-2">
+                <select
+                  id="route-filter"
+                  className="border rounded-lg px-3 py-2 text-sm dark:bg-gray-800 dark:border-gray-700"
+                  defaultValue="delivery"
+                >
+                  <option value="collection">Collections Today</option>
+                  <option value="delivery">Deliveries Today</option>
+                  <option value="all">All Pending</option>
+                </select>
+                <button
+                  onClick={() => {
+                    // Get orders with addresses and sort by postcode
+                    const pendingOrders = orders.filter(o =>
+                      o.status === 'ready' || o.status === 'out_for_delivery' || o.status === 'pending'
+                    ).filter(o => o.customer_address);
+
+                    // Sort by postcode (extract postcode from address)
+                    const sortedOrders = [...pendingOrders].sort((a, b) => {
+                      const postcodeA = (a.customer_address || '').match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || '';
+                      const postcodeB = (b.customer_address || '').match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || '';
+                      return postcodeA.localeCompare(postcodeB);
+                    });
+
+                    // Build Google Maps directions URL
+                    if (sortedOrders.length > 0) {
+                      const addresses = sortedOrders.map(o => encodeURIComponent(o.customer_address)).slice(0, 10);
+                      const origin = encodeURIComponent(settings.store_address || 'London');
+                      const waypoints = addresses.slice(0, -1).join('|');
+                      const destination = addresses[addresses.length - 1];
+
+                      const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ''}&travelmode=driving`;
+                      window.open(mapsUrl, '_blank');
+                    } else {
+                      alert('No addresses found for pending deliveries');
+                    }
+                  }}
+                  className="bg-trust-blue text-white px-4 py-2 rounded-lg font-bold hover:bg-trust-blue-hover transition flex items-center gap-2"
+                >
+                  <MapPin size={16} />
+                  Open in Google Maps
+                </button>
+              </div>
+            </div>
+
+            {/* Route List */}
+            <div className="space-y-2">
+              {(() => {
+                const pendingOrders = orders.filter(o =>
+                  (o.status === 'ready' || o.status === 'out_for_delivery' || o.status === 'pending') && o.customer_address
+                );
+
+                // Sort by postcode for optimized route
+                const sortedOrders = [...pendingOrders].sort((a, b) => {
+                  const postcodeA = (a.customer_address || '').match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || 'ZZZ';
+                  const postcodeB = (b.customer_address || '').match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || 'ZZZ';
+                  return postcodeA.localeCompare(postcodeB);
+                });
+
+                if (sortedOrders.length === 0) {
+                  return (
+                    <div className="text-center py-8 text-gray-500">
+                      <Truck size={48} className="mx-auto mb-4 opacity-20" />
+                      <p>No pending deliveries with addresses</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3 mb-4">
+                      <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                        <Check size={16} />
+                        <span className="font-bold text-sm">Route optimized by postcode - {sortedOrders.length} stops</span>
+                      </div>
+                    </div>
+
+                    <div className="border dark:border-gray-700 rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-bold">#</th>
+                            <th className="px-4 py-3 text-left font-bold">Customer</th>
+                            <th className="px-4 py-3 text-left font-bold">Address</th>
+                            <th className="px-4 py-3 text-left font-bold">Postcode</th>
+                            <th className="px-4 py-3 text-left font-bold">Status</th>
+                            <th className="px-4 py-3 text-right font-bold">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {sortedOrders.map((order, idx) => {
+                            const postcode = (order.customer_address || '').match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || '-';
+                            return (
+                              <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                <td className="px-4 py-3">
+                                  <span className="w-6 h-6 bg-trust-blue text-white rounded-full flex items-center justify-center text-xs font-bold">
+                                    {idx + 1}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="font-medium text-gray-900 dark:text-white">{order.customer_name}</div>
+                                  <div className="text-xs text-gray-500">{order.customer_phone}</div>
+                                </td>
+                                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[200px] truncate">
+                                  {order.customer_address}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-1 rounded text-xs font-bold">
+                                    {postcode}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                                    order.status === 'ready' ? 'bg-green-100 text-green-700' :
+                                    order.status === 'out_for_delivery' ? 'bg-purple-100 text-purple-700' :
+                                    'bg-yellow-100 text-yellow-700'
+                                  }`}>
+                                    {order.status === 'ready' ? 'Ready' : order.status === 'out_for_delivery' ? 'Out for Delivery' : 'Pending'}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <button
+                                      onClick={() => {
+                                        window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.customer_address)}`, '_blank');
+                                      }}
+                                      className="text-gray-400 hover:text-trust-blue p-1"
+                                      title="View on Map"
+                                    >
+                                      <MapPin size={16} />
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        window.open(`tel:${order.customer_phone}`, '_self');
+                                      }}
+                                      className="text-gray-400 hover:text-green-600 p-1"
+                                      title="Call Customer"
+                                    >
+                                      <Phone size={16} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-4 pt-4 border-t dark:border-gray-700">
+                      <div className="text-sm text-gray-500">
+                        Total distance will be calculated by Google Maps
+                      </div>
+                      <button
+                        onClick={() => {
+                          const sortedOrders = orders.filter(o =>
+                            (o.status === 'ready' || o.status === 'out_for_delivery') && o.customer_address
+                          ).sort((a, b) => {
+                            const postcodeA = (a.customer_address || '').match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || '';
+                            const postcodeB = (b.customer_address || '').match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || '';
+                            return postcodeA.localeCompare(postcodeB);
+                          });
+
+                          // Export route as text
+                          const routeText = sortedOrders.map((o, i) =>
+                            `${i + 1}. ${o.customer_name}\n   ${o.customer_address}\n   Tel: ${o.customer_phone}\n`
+                          ).join('\n');
+
+                          navigator.clipboard.writeText(routeText);
+                          alert('Route copied to clipboard!');
+                        }}
+                        className="text-sm text-trust-blue hover:text-trust-blue-hover font-bold flex items-center gap-1"
+                      >
+                        <Copy size={14} /> Copy Route List
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
         </div>
       )}
 
@@ -3806,6 +4885,704 @@ const BackOfficePage: React.FC<{
       )
       }
 
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-8 relative transform transition-all duration-300 scale-100 border border-gray-200 dark:border-gray-800">
+            <div className="absolute -top-10 left-1/2 transform -translate-x-1/2">
+              <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-full p-4 shadow-lg">
+                <AlertCircle size={40} className="text-white" />
+              </div>
+            </div>
+
+            <div className="mt-8 text-center">
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">Are you sure?</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
+                {deleteConfirm.type === 'all' && (
+                  <>You are about to delete <span className="font-bold text-red-600">ALL services and categories</span>. This action cannot be undone!</>
+                )}
+                {deleteConfirm.type === 'service' && (
+                  <>You are about to delete the service <span className="font-bold text-red-600">"{deleteConfirm.name}"</span>. This cannot be undone.</>
+                )}
+                {deleteConfirm.type === 'category' && (
+                  <>You are about to delete the category <span className="font-bold text-red-600">"{deleteConfirm.name}"</span> and all its services. This cannot be undone.</>
+                )}
+              </p>
+
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-bold hover:from-red-600 hover:to-red-700 transition-all shadow-lg hover:shadow-red-500/25 flex items-center gap-2"
+                >
+                  <Trash2 size={18} />
+                  Yes, Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* How to Use Guide Modal */}
+      {showHelpGuide && (
+        <div className="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl max-w-5xl w-full my-8 overflow-hidden border border-gray-200 dark:border-gray-800 animate-fade-in">
+            {/* Header */}
+            <div className="sticky top-0 z-10 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white p-6 flex justify-between items-center">
+              <div>
+                <h2 className="text-2xl font-bold flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <FileText size={24} />
+                  </div>
+                  CleanPOS User Guide
+                </h2>
+                <p className="text-white/80 text-sm mt-1">Complete guide to managing your dry cleaning business</p>
+              </div>
+              <button
+                onClick={() => setShowHelpGuide(false)}
+                className="w-10 h-10 bg-white/20 hover:bg-white/30 rounded-xl flex items-center justify-center transition-all hover:rotate-90"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-8 space-y-10 max-h-[70vh] overflow-y-auto">
+
+              {/* Quick Start */}
+              <section className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-6 border border-blue-100 dark:border-blue-900/30">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+                  <Rocket className="text-blue-600" size={24} /> Quick Start Guide
+                </h3>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/50 rounded-lg flex items-center justify-center mb-2 text-blue-600 font-bold">1</div>
+                    <h4 className="font-bold text-sm mb-1">Set Up Store</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Go to Store Details tab and add your business name, address, and contact info.</p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg flex items-center justify-center mb-2 text-indigo-600 font-bold">2</div>
+                    <h4 className="font-bold text-sm mb-1">Add Services</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Upload your price list CSV or manually add services in the Services tab.</p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/50 rounded-lg flex items-center justify-center mb-2 text-purple-600 font-bold">3</div>
+                    <h4 className="font-bold text-sm mb-1">Configure Schedule</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Set up your collection/delivery time slots in the Schedule tab.</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Orders Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <ShoppingBag className="text-trust-blue" size={20} /> Orders Management
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>The Orders tab is your central hub for managing all customer orders. Here's how to use it effectively:</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Viewing Orders</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• All orders are displayed with the newest first</li>
+                        <li>• See order ID, customer name, status, and total</li>
+                        <li>• Filter by status: Pending, Collected, Processing, Ready, Delivered</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Updating Orders</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Click dropdown to change order status</li>
+                        <li>• Assign drivers for collection/delivery</li>
+                        <li>• Add POS ticket ID for integration</li>
+                        <li>• Click "Edit" to modify items and add charges</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Printing Invoices</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Click the printer icon on any order</li>
+                        <li>• Invoice opens in new window with auto-print</li>
+                        <li>• Shows all items, preferences, and totals</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Order Status Flow</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">Pending:</span> New order awaiting pickup</li>
+                        <li>• <span className="font-bold">Collected:</span> Items picked up from customer</li>
+                        <li>• <span className="font-bold">Processing:</span> Being cleaned/pressed</li>
+                        <li>• <span className="font-bold">Ready:</span> Complete, awaiting delivery</li>
+                        <li>• <span className="font-bold">Delivered:</span> Returned to customer</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Store Details Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Settings className="text-trust-blue" size={20} /> Store Details
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Invoice Settings</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">Store Name:</span> Appears on all invoices</li>
+                        <li>• <span className="font-bold">VAT Number:</span> Shown if entered</li>
+                        <li>• <span className="font-bold">Email:</span> Receives order notification copies</li>
+                        <li>• <span className="font-bold">Phone:</span> Customer contact number</li>
+                        <li>• <span className="font-bold">Address:</span> Full business address</li>
+                        <li>• <span className="font-bold">Invoice Footer:</span> Custom thank-you message</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Branding & Theme</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">Header Color:</span> Top navigation bar color</li>
+                        <li>• <span className="font-bold">Footer Color:</span> Bottom section color</li>
+                        <li>• Use color picker or enter hex codes</li>
+                        <li>• Changes apply instantly to customer site</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl md:col-span-2">
+                      <h4 className="font-bold text-green-600 mb-2">SEO & Social Media</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">SEO Title:</span> Google search result title</li>
+                        <li>• <span className="font-bold">Meta Description:</span> Search result description</li>
+                        <li>• <span className="font-bold">Keywords:</span> Help with local search ranking</li>
+                        <li>• <span className="font-bold">Facebook/Instagram:</span> Links shown in footer</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Customers Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Users className="text-trust-blue" size={20} /> Customer Management
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Customer Database</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• View all registered customers</li>
+                        <li>• Search by name, phone, or postcode</li>
+                        <li>• See loyalty points balance</li>
+                        <li>• View order history and preferences</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Customer Preferences</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">Starch Level:</span> None, Light, Medium, Heavy</li>
+                        <li>• <span className="font-bold">Finish Style:</span> On Hanger or Folded</li>
+                        <li>• <span className="font-bold">Trouser Crease:</span> Natural or No Crease</li>
+                        <li>• <span className="font-bold">Detergent:</span> Standard or Sensitive</li>
+                        <li>• <span className="font-bold">Eco Options:</span> No plastic, recycle hangers</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl md:col-span-2">
+                      <h4 className="font-bold text-orange-600 mb-2">Editing Customers</h4>
+                      <p className="text-xs">Click the edit icon next to any customer to update their details, adjust loyalty points, or modify their cleaning preferences. All changes save automatically.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Subscriptions Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Repeat className="text-trust-blue" size={20} /> Subscriptions
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>Manage recurring customers who want regular weekly or bi-weekly pickups.</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Subscription Types</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">Weekly:</span> Pickup every 7 days</li>
+                        <li>• <span className="font-bold">Bi-Weekly:</span> Pickup every 14 days</li>
+                        <li>• Customers set preferred day of week</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Managing Subscriptions</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• View active vs paused subscriptions</li>
+                        <li>• Pause/resume with one click</li>
+                        <li>• "Process Recurring" creates pending orders</li>
+                        <li>• Orders auto-clone from last pickup</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Offers & Loyalty Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Tag className="text-trust-blue" size={20} /> Offers & Loyalty
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-purple-600 mb-2">Loyalty Points</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Set points per pound spent</li>
+                        <li>• Configure point value in pounds</li>
+                        <li>• Customers can redeem at checkout</li>
+                        <li>• Points shown on invoices</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-green-600 mb-2">BOGO Promotions</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Buy X, Get Y Free deals</li>
+                        <li>• Example: Buy 3 shirts, get 1 free</li>
+                        <li>• Select which items qualify</li>
+                        <li>• Toggle promotions on/off</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-orange-600 mb-2">Bundle Deals</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Fixed price for X items</li>
+                        <li>• Example: 5 items for £20</li>
+                        <li>• Select qualifying items</li>
+                        <li>• Great for shirt bundles</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl md:col-span-3">
+                      <h4 className="font-bold text-trust-blue mb-2">Discount Codes</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Create unique promo codes (e.g., SAVE10)</li>
+                        <li>• Set percentage or fixed amount discounts</li>
+                        <li>• Configure one-time use or unlimited</li>
+                        <li>• Set expiry dates for limited campaigns</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Schedule Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Clock className="text-trust-blue" size={20} /> Schedule Management
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Active Days</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Toggle each day on/off</li>
+                        <li>• Inactive days hidden from booking</li>
+                        <li>• Perfect for closed days (Sunday)</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Time Slots</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Add slots per day (e.g., "08:00-12:00")</li>
+                        <li>• Delete slots no longer needed</li>
+                        <li>• Customers select from available slots</li>
+                        <li>• Slots shown in booking page</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Services Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Shirt className="text-trust-blue" size={20} /> Services & Pricing
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Adding Services</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Enter category, name, and price</li>
+                        <li>• Categories organize your menu</li>
+                        <li>• Prices shown to customers</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">CSV Upload</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Bulk import via CSV file</li>
+                        <li>• Format: Category, Name, Price</li>
+                        <li>• Or: Menu1, Menu2, Title, Price</li>
+                        <li>• Click "Upload CSV" button</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Editing Services</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Click pencil icon to edit</li>
+                        <li>• Update name or price</li>
+                        <li>• Save changes instantly</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-red-600 mb-2">Deleting Services</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Click trash icon</li>
+                        <li>• Type "DELETE" to confirm</li>
+                        <li>• Action cannot be undone</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-200 dark:border-amber-900/30">
+                    <h4 className="font-bold text-amber-700 mb-1 flex items-center gap-2"><AlertCircle size={16} /> Category Ordering</h4>
+                    <p className="text-xs text-amber-600">Unlock sort mode (toggle at top) to drag and reorder categories. Categories appear in this order on your customer booking page.</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Marketing Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Mail className="text-trust-blue" size={20} /> Marketing & Email
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Email Templates</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Create custom email templates</li>
+                        <li>• Edit subject and body text</li>
+                        <li>• Use variables: {'{name}'}, {'{orderId}'}</li>
+                        <li>• Send test emails to verify</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Customer Segments</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">All:</span> Every customer</li>
+                        <li>• <span className="font-bold">Inactive:</span> No orders in 4 weeks</li>
+                        <li>• <span className="font-bold">One-timer:</span> Only 1 order ever</li>
+                        <li>• <span className="font-bold">Service-specific:</span> By service type</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Drivers Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Truck className="text-trust-blue" size={20} /> Driver Management
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Adding Drivers</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Enter name, email, phone</li>
+                        <li>• Set login password</li>
+                        <li>• Add vehicle registration</li>
+                        <li>• Select working days</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Driver Portal</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Drivers log in from footer link</li>
+                        <li>• See assigned collections/deliveries</li>
+                        <li>• Update order status on the go</li>
+                        <li>• View customer addresses and notes</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Reports Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <TrendingUp className="text-trust-blue" size={20} /> Reports & Analytics
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Revenue Reports</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Daily, weekly, monthly revenue</li>
+                        <li>• Compare to previous periods</li>
+                        <li>• See growth percentage</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Order Analytics</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Total orders count</li>
+                        <li>• Average order value</li>
+                        <li>• Popular services</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Customer Insights</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• New vs returning</li>
+                        <li>• Customer lifetime value</li>
+                        <li>• Peak hours heatmap</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Billing Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <CreditCard className="text-trust-blue" size={20} /> Subscription & Billing
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Plan Status</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• View current plan and status</li>
+                        <li>• See trial/subscription end date</li>
+                        <li>• Upgrade to Professional plan</li>
+                        <li>• Redeem partner voucher codes</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-purple-600 mb-2">Stripe Connect</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Connect your Stripe account</li>
+                        <li>• Accept online payments</li>
+                        <li>• £1.00 platform fee per order</li>
+                        <li>• Funds go directly to your account</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Customer Features */}
+              <section className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-2xl p-6 border border-green-100 dark:border-green-900/30">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+                  <Globe className="text-green-600" size={24} /> Customer-Facing Website
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Your customers access your branded website at <span className="font-mono font-bold">{tenant?.subdomain || 'yourstore'}.cleanpos.app</span></p>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <h4 className="font-bold text-sm mb-1 flex items-center gap-2"><Calendar size={16} className="text-green-600" /> Book Collection</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Customers can browse services, add items to cart, and schedule pickup times online.</p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <h4 className="font-bold text-sm mb-1 flex items-center gap-2"><Search size={16} className="text-green-600" /> Track Order</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Customers enter order ID to see real-time status and estimated delivery.</p>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <h4 className="font-bold text-sm mb-1 flex items-center gap-2"><User size={16} className="text-green-600" /> My Account</h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Registered customers view order history, points balance, and manage preferences.</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Tips */}
+              <section className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-2xl p-6 border border-amber-100 dark:border-amber-900/30">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+                  <Sparkles className="text-amber-600" size={24} /> Pro Tips
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div className="flex gap-3">
+                    <div className="w-6 h-6 bg-amber-200 dark:bg-amber-800 rounded-full flex items-center justify-center text-amber-700 dark:text-amber-200 text-xs font-bold shrink-0">1</div>
+                    <p className="text-gray-700 dark:text-gray-300"><span className="font-bold">Dark Mode:</span> Click the sun/moon icon to toggle dark mode for comfortable night use.</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="w-6 h-6 bg-amber-200 dark:bg-amber-800 rounded-full flex items-center justify-center text-amber-700 dark:text-amber-200 text-xs font-bold shrink-0">2</div>
+                    <p className="text-gray-700 dark:text-gray-300"><span className="font-bold">Real-time Updates:</span> Orders update automatically - no need to refresh the page.</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="w-6 h-6 bg-amber-200 dark:bg-amber-800 rounded-full flex items-center justify-center text-amber-700 dark:text-amber-200 text-xs font-bold shrink-0">3</div>
+                    <p className="text-gray-700 dark:text-gray-300"><span className="font-bold">Mobile Friendly:</span> Back office works great on tablets and phones too.</p>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="w-6 h-6 bg-amber-200 dark:bg-amber-800 rounded-full flex items-center justify-center text-amber-700 dark:text-amber-200 text-xs font-bold shrink-0">4</div>
+                    <p className="text-gray-700 dark:text-gray-300"><span className="font-bold">CSV Format:</span> Export your existing POS price list to CSV for quick import.</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Corporate Accounts */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Building2 className="text-trust-blue" size={20} /> Corporate Accounts
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>Manage business clients with monthly invoicing and bulk discounts.</p>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Adding Accounts</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Company name and contact</li>
+                        <li>• Billing email and address</li>
+                        <li>• Custom discount percentage</li>
+                        <li>• Payment terms (Net 7/14/30/60)</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-green-600 mb-2">Benefits</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Monthly consolidated invoicing</li>
+                        <li>• Automatic bulk discounts</li>
+                        <li>• Employee allowances</li>
+                        <li>• Credit limit management</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-purple-600 mb-2">Linking Employees</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Employees book under company</li>
+                        <li>• Orders billed to corporate</li>
+                        <li>• Track per-employee usage</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Referral Program */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Heart className="text-trust-blue" size={20} /> Referral Program
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>Grow your business through word of mouth with "Give £5, Get £5" referrals.</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-200 dark:border-green-800">
+                      <h4 className="font-bold text-green-700 dark:text-green-400 mb-2">For Customers</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Each customer gets unique referral code</li>
+                        <li>• Share via WhatsApp, Email, or copy</li>
+                        <li>• Appears in basket when logged in</li>
+                        <li>• Earn £5 credit for each referral</li>
+                      </ul>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
+                      <h4 className="font-bold text-blue-700 dark:text-blue-400 mb-2">For Business</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Track total referrals in Marketing tab</li>
+                        <li>• Share store code via WhatsApp/Email</li>
+                        <li>• New customers get £5 off first order</li>
+                        <li>• Low cost acquisition channel</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Route Optimization */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <MapPin className="text-trust-blue" size={20} /> Route Optimization
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>Optimize delivery routes to save time and fuel.</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Smart Sorting</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Auto-sorts deliveries by postcode</li>
+                        <li>• Groups nearby addresses together</li>
+                        <li>• Shows stop number in sequence</li>
+                        <li>• Filter by collections or deliveries</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Google Maps Integration</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• One-click open full route in Maps</li>
+                        <li>• Click any address to view location</li>
+                        <li>• Copy route list to clipboard</li>
+                        <li>• Click-to-call customer numbers</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Customer Features */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Search className="text-trust-blue" size={20} /> Customer Booking Features
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>New features to improve customer booking experience.</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Service Search</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Search bar to find services quickly</li>
+                        <li>• Search by name or category</li>
+                        <li>• Auto-expands matching categories</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Quick Add (+/-)</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Quantity buttons on each service</li>
+                        <li>• Quickly add multiple of same item</li>
+                        <li>• Shows current quantity in cart</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-orange-600 mb-2">Order Again</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Shows frequently ordered items</li>
+                        <li>• One-click to add to cart</li>
+                        <li>• Based on customer's order history</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-purple-600 mb-2">Category Icons</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Visual icons for each category</li>
+                        <li>• Auto-assigned based on name</li>
+                        <li>• Shirts 👔, Dresses 👗, Coats 🧥, etc.</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Support */}
+              <section className="text-center py-6">
+                <p className="text-sm text-gray-500 dark:text-gray-400">Need more help? Contact support at <span className="font-bold text-trust-blue">support@posso.co.uk</span></p>
+              </section>
+            </div>
+
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-gray-50 dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+              <p className="text-xs text-gray-500">CleanPOS v2.0 - User Guide</p>
+              <button
+                onClick={() => setShowHelpGuide(false)}
+                className="bg-trust-blue text-white px-6 py-2 rounded-xl font-bold hover:bg-trust-blue-hover transition"
+              >
+                Got it!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Subscription Expiry Overlay */}
       {
         tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date() && (
@@ -3890,6 +5667,35 @@ const BookingPage: React.FC<{
   const [appliedDiscountCode, setAppliedDiscountCode] = useState<DiscountCode | null>(null);
   const [codeError, setCodeError] = useState('');
   const [showMultiOfferWarning, setShowMultiOfferWarning] = useState(false);
+  const [serviceSearch, setServiceSearch] = useState('');
+  const [recentItems, setRecentItems] = useState<{name: string; price: string; count: number}[]>([]);
+
+  // Category icons mapping
+  const getCategoryIcon = (catName: string) => {
+    const name = catName.toLowerCase();
+    if (name.includes('shirt')) return '👔';
+    if (name.includes('dress') || name.includes('ladies')) return '👗';
+    if (name.includes('suit') || name.includes('mens') || name.includes('men')) return '🤵';
+    if (name.includes('coat') || name.includes('jacket')) return '🧥';
+    if (name.includes('trouser') || name.includes('pants')) return '👖';
+    if (name.includes('laundry') || name.includes('wash')) return '🧺';
+    if (name.includes('household') || name.includes('bedding') || name.includes('curtain')) return '🏠';
+    if (name.includes('leather') || name.includes('suede')) return '🧳';
+    if (name.includes('wedding') || name.includes('bridal')) return '💒';
+    if (name.includes('alter') || name.includes('repair') || name.includes('tailor')) return '✂️';
+    if (name.includes('press') || name.includes('iron')) return '♨️';
+    if (name.includes('express') || name.includes('same') || name.includes('urgent')) return '⚡';
+    if (name.includes('child') || name.includes('kid')) return '👶';
+    if (name.includes('shoe') || name.includes('boot')) return '👞';
+    if (name.includes('bag') || name.includes('handbag')) return '👜';
+    if (name.includes('jumper') || name.includes('sweater') || name.includes('cardigan')) return '🧶';
+    if (name.includes('rain') || name.includes('waterproof')) return '🌧️';
+    if (name.includes('silk') || name.includes('delicate')) return '✨';
+    if (name.includes('uniform') || name.includes('work')) return '👷';
+    if (name.includes('sport') || name.includes('gym')) return '🏃';
+    if (name.includes('misc') || name.includes('other')) return '📦';
+    return '👕'; // Default
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -3914,6 +5720,38 @@ const BookingPage: React.FC<{
             notes: currentUser.notes || ''
           });
           if (currentUser.loyalty_points) setPointsBalance(currentUser.loyalty_points);
+
+          // Fetch recent orders to show "Order Again" items
+          const { data: recentOrders } = await supabase
+            .from('cp_orders')
+            .select('items')
+            .eq('tenant_id', tenant.id)
+            .eq('customer_email', currentUser.email)
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          if (recentOrders && mounted) {
+            // Extract and count items from recent orders
+            const itemCounts: Record<string, {name: string; price: string; count: number}> = {};
+            recentOrders.forEach(order => {
+              try {
+                const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+                if (Array.isArray(items)) {
+                  items.forEach((item: any) => {
+                    if (item.name && !item.name.includes('Valet Bag')) {
+                      if (!itemCounts[item.name]) {
+                        itemCounts[item.name] = { name: item.name, price: item.price || '0', count: 0 };
+                      }
+                      itemCounts[item.name].count += item.quantity || 1;
+                    }
+                  });
+                }
+              } catch (e) { /* ignore parse errors */ }
+            });
+            // Sort by frequency and take top 6
+            const sortedItems = Object.values(itemCounts).sort((a, b) => b.count - a.count).slice(0, 6);
+            setRecentItems(sortedItems);
+          }
         }
       } catch (err) {
         console.error('Error loading booking data:', err);
@@ -4430,6 +6268,65 @@ const BookingPage: React.FC<{
           <div className="lg:col-span-2 space-y-4">
             <h2 className="font-bold text-2xl mb-4">Select Items</h2>
 
+            {/* Search Bar */}
+            <div className="relative mb-4">
+              <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search services... (e.g. shirt, dress, alterations)"
+                value={serviceSearch}
+                onChange={(e) => setServiceSearch(e.target.value)}
+                className="w-full pl-12 pr-10 py-3 border-2 border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-trust-blue focus:border-trust-blue transition-all"
+              />
+              {serviceSearch && (
+                <button
+                  onClick={() => setServiceSearch('')}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+
+            {/* Order Again / Favorites Section */}
+            {currentUser && recentItems.length > 0 && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-4 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Heart size={18} className="text-amber-500" fill="currentColor" />
+                  <span className="font-bold text-gray-800">Order Again</span>
+                  <span className="text-xs text-gray-500">Your frequently ordered items</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {recentItems.map(item => {
+                    const svc = services.find(s => s.name === item.name);
+                    const cartItem = cart.find(i => i.name === item.name);
+                    const qtyInCart = cartItem ? cartItem.quantity : 0;
+
+                    return (
+                      <button
+                        key={item.name}
+                        onClick={() => {
+                          if (svc) addToCart(svc);
+                          else setCart([...cart, { name: item.name, price: item.price, quantity: 1, note: '' }]);
+                        }}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                          qtyInCart > 0
+                            ? 'bg-trust-blue text-white shadow-md'
+                            : 'bg-white border border-gray-200 text-gray-700 hover:border-trust-blue hover:text-trust-blue'
+                        }`}
+                      >
+                        <span>{item.name}</span>
+                        <span className="text-xs opacity-75">£{parseFloat(item.price).toFixed(2)}</span>
+                        {qtyInCart > 0 && (
+                          <span className="bg-white text-trust-blue text-xs font-bold px-1.5 py-0.5 rounded-full">{qtyInCart}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Quick Helper for Valet Bags */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <button
@@ -4463,15 +6360,23 @@ const BookingPage: React.FC<{
             </div>
 
             {(() => {
-              // Group items by category from the services list itself to be safe
+              // Filter services by search term
+              const filteredServices = serviceSearch.trim()
+                ? services.filter(svc =>
+                    svc.name.toLowerCase().includes(serviceSearch.toLowerCase()) ||
+                    (svc.category && svc.category.toLowerCase().includes(serviceSearch.toLowerCase()))
+                  )
+                : services;
+
+              // Group items by category only (no subcategory)
               const servicesByCategory: Record<string, ServiceProduct[]> = {};
-              services.forEach(svc => {
+              filteredServices.forEach(svc => {
                 const cat = svc.category || 'Uncategorized';
                 if (!servicesByCategory[cat]) servicesByCategory[cat] = [];
                 servicesByCategory[cat].push(svc);
               });
 
-              // Sort based on the categories table if available, else alphabetically
+              // Sort categories based on the categories table if available, else alphabetically
               const sortedCategoryNames = Object.keys(servicesByCategory).sort((a, b) => {
                 const catA = categories.find(c => c.name === a);
                 const catB = categories.find(c => c.name === b);
@@ -4485,15 +6390,18 @@ const BookingPage: React.FC<{
               if (sortedCategoryNames.length === 0 && !dataLoading) {
                 return (
                   <div className="text-center py-12 bg-white rounded-xl border-2 border-dashed border-gray-200">
-                    <p className="text-gray-500">No services available for this location yet.</p>
+                    <p className="text-gray-500">{serviceSearch ? `No services found for "${serviceSearch}"` : 'No services available for this location yet.'}</p>
                   </div>
                 );
               }
 
-              return sortedCategoryNames.map(catName => {
+              // If searching, auto-expand all categories with matches
+              const catsToShow = serviceSearch.trim() ? sortedCategoryNames : sortedCategoryNames;
+
+              return catsToShow.map(catName => {
                 const catServices = servicesByCategory[catName];
-                const isExpanded = expandedCats.includes(catName);
-                if (!catServices || catServices.length === 0) return null;
+                const isCatExpanded = serviceSearch.trim() ? true : expandedCats.includes(catName);
+                if (catServices.length === 0) return null;
 
                 return (
                   <div key={catName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-4">
@@ -4502,31 +6410,54 @@ const BookingPage: React.FC<{
                       className="w-full flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-1.5 h-6 bg-trust-blue rounded-full" />
+                        <span className="text-2xl">{getCategoryIcon(catName)}</span>
                         <span className="font-bold text-gray-800 capitalize text-lg tracking-tight">{catName}</span>
                         <span className="text-[10px] font-bold text-gray-400 bg-gray-200/50 px-2 py-0.5 rounded-full uppercase">{catServices.length} Items</span>
                       </div>
-                      {isExpanded ? <ChevronUp size={20} className="text-trust-blue" /> : <ChevronDown size={20} className="text-gray-400" />}
+                      {isCatExpanded ? <ChevronUp size={20} className="text-trust-blue" /> : <ChevronDown size={20} className="text-gray-400" />}
                     </button>
-                    {isExpanded && (
+                    {isCatExpanded && (
                       <div className="divide-y divide-gray-100 animate-fade-in">
-                        {catServices.map(svc => (
-                          <div key={svc.id} className="p-5 flex justify-between items-center hover:bg-blue-50/30 transition group">
-                            <div>
-                              <div className="font-bold text-gray-900 group-hover:text-trust-blue transition-colors">{svc.name}</div>
-                              <div className="text-sm font-bold text-trust-blue/80 mt-0.5">
-                                {svc.price_display || formatPrice(svc.price_numeric || svc.price || 0)}
+                        {catServices.map(svc => {
+                          const cartItem = cart.find(i => i.name === svc.name);
+                          const qtyInCart = cartItem ? cartItem.quantity : 0;
+
+                          return (
+                            <div key={svc.id} className="px-6 py-4 flex justify-between items-center hover:bg-blue-50/30 transition group">
+                              <div className="flex-1">
+                                <div className="font-bold text-gray-900 group-hover:text-trust-blue transition-colors">{svc.name}</div>
+                                <div className="text-sm font-bold text-trust-blue/80 mt-0.5">
+                                  {svc.price_display || formatPrice(svc.price_numeric || svc.price || 0)}
+                                </div>
                               </div>
+                              {qtyInCart > 0 ? (
+                                <div className="flex items-center gap-2 bg-trust-blue/10 rounded-xl p-1">
+                                  <button
+                                    onClick={() => updateQuantity(svc.name, -1)}
+                                    className="w-9 h-9 rounded-lg bg-white border border-gray-200 text-trust-blue hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition flex items-center justify-center font-bold text-lg"
+                                  >
+                                    −
+                                  </button>
+                                  <span className="w-8 text-center font-bold text-trust-blue">{qtyInCart}</span>
+                                  <button
+                                    onClick={() => updateQuantity(svc.name, 1)}
+                                    className="w-9 h-9 rounded-lg bg-trust-blue text-white hover:bg-trust-blue-hover transition flex items-center justify-center font-bold text-lg"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => addToCart(svc)}
+                                  className="bg-white border-2 border-trust-blue text-trust-blue p-2 rounded-xl hover:bg-trust-blue hover:text-white transition shadow-sm hover:shadow-md flex items-center justify-center"
+                                  title="Add to Basket"
+                                >
+                                  <Plus size={20} strokeWidth={3} />
+                                </button>
+                              )}
                             </div>
-                            <button
-                              onClick={() => addToCart(svc)}
-                              className="bg-white border-2 border-trust-blue text-trust-blue p-2 rounded-xl hover:bg-trust-blue hover:text-white transition shadow-sm hover:shadow-md flex items-center justify-center"
-                              title="Add to Basket"
-                            >
-                              <Plus size={20} strokeWidth={3} />
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -4629,6 +6560,57 @@ const BookingPage: React.FC<{
                         <div className="text-xs text-gray-500">Keep collecting</div>
                         <div className="text-xs font-bold text-yellow-700">for more rewards</div>
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Refer a Friend Section - Customer Facing */}
+                {currentUser && (
+                  <div className="mt-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border-2 border-green-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="bg-green-500 p-1.5 rounded-full">
+                        <Heart size={14} className="text-white" fill="white" />
+                      </div>
+                      <div className="font-bold text-gray-800 text-sm">Refer a Friend</div>
+                    </div>
+                    <p className="text-xs text-gray-600 mb-3">Give £5, Get £5! Share your code with friends.</p>
+                    <div className="flex items-center gap-2 mb-3">
+                      <code className="flex-1 text-center font-bold text-green-700 bg-white px-3 py-2 rounded-lg border border-green-200 text-sm">
+                        {currentUser.email?.split('@')[0]?.toUpperCase().slice(0, 8) || 'FRIEND'}
+                      </code>
+                      <button
+                        onClick={() => {
+                          const code = currentUser.email?.split('@')[0]?.toUpperCase().slice(0, 8) || 'FRIEND';
+                          navigator.clipboard.writeText(code);
+                          alert('Code copied!');
+                        }}
+                        className="p-2 bg-white border border-green-200 rounded-lg hover:bg-green-50 transition"
+                      >
+                        <Copy size={16} className="text-green-600" />
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          const code = currentUser.email?.split('@')[0]?.toUpperCase().slice(0, 8) || 'FRIEND';
+                          const msg = `Hey! Get £5 off your first order at ${tenant?.name}! Use my referral code: ${code} 🧺✨`;
+                          window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1 bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-xs font-bold transition"
+                      >
+                        <MessageCircle size={14} /> WhatsApp
+                      </button>
+                      <button
+                        onClick={() => {
+                          const code = currentUser.email?.split('@')[0]?.toUpperCase().slice(0, 8) || 'FRIEND';
+                          const subject = `Get £5 off at ${tenant?.name}!`;
+                          const body = `Hey!\n\nI've been using ${tenant?.name} for my dry cleaning and they're great!\n\nUse my referral code to get £5 off your first order: ${code}\n\nEnjoy! 🧺`;
+                          window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded-lg text-xs font-bold transition"
+                      >
+                        <Mail size={14} /> Email
+                      </button>
                     </div>
                   </div>
                 )}
@@ -4810,7 +6792,7 @@ const HomePage: React.FC<{ tenant: any; setPage: (p: Page) => void }> = ({ tenan
             ) : (
               categories.slice(0, 8).map((cat, idx) => (
                 <div
-                  key={cat.id}
+                  key={`${cat.name}-${idx}`}
                   onClick={() => {
                     // Navigate to services page and scroll to category?
                     // For now just navigate to services
@@ -4890,10 +6872,18 @@ const ServicesPage: React.FC<{ tenant: any }> = ({ tenant }) => {
       {loading ? (
         <div className="flex justify-center p-12"><Loader2 className="animate-spin text-trust-blue" /></div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="space-y-8">
           {(() => {
-            const serviceCats = Array.from(new Set(services.map(s => s.category))).filter(Boolean) as string[];
+            // Group by category only (no subcategory)
+            const servicesByCategory: Record<string, any[]> = {};
+            services.forEach(svc => {
+              const cat = svc.category || 'Uncategorized';
+              if (!servicesByCategory[cat]) servicesByCategory[cat] = [];
+              servicesByCategory[cat].push(svc);
+            });
+
             const tableCats = categories.map(c => c.name);
+            const serviceCats = Object.keys(servicesByCategory);
             const allCats = Array.from(new Set([...tableCats, ...serviceCats])).sort((a, b) => {
               const catA = categories.find(c => c.name === a);
               const catB = categories.find(c => c.name === b);
@@ -4901,22 +6891,26 @@ const ServicesPage: React.FC<{ tenant: any }> = ({ tenant }) => {
             });
 
             return allCats.map(catName => {
-              const catSvcs = services.filter(s => s.category === catName);
-              if (catSvcs.length === 0) return null;
+              const catServices = servicesByCategory[catName];
+              if (!catServices || catServices.length === 0) return null;
+
               return (
-                <div key={catName} className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow">
-                  <h3 className="text-xl font-bold mb-4 text-trust-blue flex items-center gap-2">
-                    <div className="w-1 h-5 bg-trust-blue rounded-full" />
-                    {catName}
-                  </h3>
-                  <ul className="space-y-3">
-                    {catSvcs.map(s => (
-                      <li key={s.id} className="flex justify-between border-b border-gray-50 dark:border-gray-800 pb-2 group">
-                        <span className="text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">{s.name}</span>
-                        <span className="font-bold text-gray-900 dark:text-gray-100">£{parseFloat(String(s.price_numeric || 0)).toFixed(2)}</span>
-                      </li>
+                <div key={catName} className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
+                  <div className="bg-trust-blue/10 dark:bg-trust-blue/20 px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+                    <h3 className="text-xl font-bold text-trust-blue flex items-center gap-2">
+                      <div className="w-1.5 h-6 bg-trust-blue rounded-full" />
+                      {catName}
+                      <span className="text-sm font-normal text-gray-500 ml-2">({catServices.length} items)</span>
+                    </h3>
+                  </div>
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
+                    {catServices.map(s => (
+                      <div key={s.id} className="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-800/50 rounded-lg px-4 py-3">
+                        <span className="text-gray-700 dark:text-gray-300 font-medium">{s.name}</span>
+                        <span className="font-bold text-trust-blue">£{parseFloat(String(s.price_numeric || 0)).toFixed(2)}</span>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               );
             });
@@ -4951,350 +6945,742 @@ const ContactPage: React.FC<{ settings?: any }> = ({ settings }) => (
 );
 
 
-// Reports Tab Component
-const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
-  const [reportType, setReportType] = useState<'sales' | 'drivers' | 'status' | 'customers' | 'revenue'>('sales');
-  const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [reportData, setReportData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+// Enhanced Reports Tab Component - Corporate Style
+type ReportView = 'dashboard' | 'revenue' | 'top-items' | 'busiest-times' | 'customers' | 'preferences' | 'drivers' | 'services' | 'subscriptions';
 
-  const generateReport = async () => {
+const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+  const [activeReport, setActiveReport] = useState<ReportView>('dashboard');
+  const [dateRange, setDateRange] = useState(() => getDateRangePreset('month'));
+  const [datePreset, setDatePreset] = useState<'today' | 'week' | 'month' | 'quarter' | 'year'>('month');
+  const [loading, setLoading] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Data states
+  const [orders, setOrders] = useState<any[]>([]);
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [previousPeriodOrders, setPreviousPeriodOrders] = useState<any[]>([]);
+  const [tableSearchTerm, setTableSearchTerm] = useState('');
+  const [tableSortConfig, setTableSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  // Fetch all data
+  const fetchReportData = async () => {
     setLoading(true);
 
-    let query = supabase.from('cp_orders').select(`
-      *,
-      collection_driver:cp_drivers!collection_driver_id(name),
-      delivery_driver:cp_drivers!delivery_driver_id(name)
-    `).eq('tenant_id', tenantId);
+    // Calculate previous period for comparison
+    const currentStart = new Date(dateRange.start);
+    const currentEnd = new Date(dateRange.end);
+    const periodLength = currentEnd.getTime() - currentStart.getTime();
+    const previousStart = new Date(currentStart.getTime() - periodLength);
+    const previousEnd = new Date(currentStart.getTime() - 1);
 
-    // Apply date filter if provided
-    if (dateRange.start) {
-      query = query.gte('created_at', dateRange.start);
-    }
-    if (dateRange.end) {
-      query = query.lte('created_at', dateRange.end);
-    }
+    // Fetch current period orders
+    const { data: ordersData } = await supabase
+      .from('cp_orders')
+      .select(`*, collection_driver:cp_drivers!collection_driver_id(name), delivery_driver:cp_drivers!delivery_driver_id(name)`)
+      .eq('tenant_id', tenantId)
+      .gte('created_at', dateRange.start)
+      .lte('created_at', dateRange.end + 'T23:59:59')
+      .order('created_at', { ascending: false });
 
-    const { data, error } = await query.order('created_at', { ascending: false });
+    // Fetch previous period for comparison
+    const { data: prevOrdersData } = await supabase
+      .from('cp_orders')
+      .select('total_amount, created_at')
+      .eq('tenant_id', tenantId)
+      .gte('created_at', previousStart.toISOString())
+      .lte('created_at', previousEnd.toISOString());
 
-    if (!error && data) {
-      setReportData(data);
-    }
+    // Fetch customers
+    const { data: customersData } = await supabase
+      .from('cp_customers')
+      .select('*')
+      .eq('tenant_id', tenantId);
+
+    if (ordersData) setOrders(ordersData);
+    if (prevOrdersData) setPreviousPeriodOrders(prevOrdersData);
+    if (customersData) setCustomers(customersData);
 
     setLoading(false);
   };
 
-  const exportToCSV = () => {
-    if (reportData.length === 0) return;
+  useEffect(() => {
+    fetchReportData();
+  }, [dateRange, tenantId]);
 
-    const headers = Object.keys(reportData[0]).join(',');
-    const rows = reportData.map(row =>
-      Object.values(row).map(val =>
-        typeof val === 'object' ? JSON.stringify(val) : val
-      ).join(',')
-    );
+  // Handle date preset change
+  const handlePresetChange = (preset: 'today' | 'week' | 'month' | 'quarter' | 'year') => {
+    setDatePreset(preset);
+    setDateRange(getDateRangePreset(preset));
+  };
 
+  // Calculate metrics
+  const metrics = useMemo(() => {
+    const totalRevenue = orders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+    const totalOrders = orders.length;
+    const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+    const prevRevenue = previousPeriodOrders.reduce((sum, o) => sum + (parseFloat(o.total_amount) || 0), 0);
+    const prevOrders = previousPeriodOrders.length;
+
+    const revenueChange = calculatePercentChange(totalRevenue, prevRevenue);
+    const ordersChange = calculatePercentChange(totalOrders, prevOrders);
+
+    // Unique customers in period
+    const uniqueCustomers = new Set(orders.map(o => o.customer_email)).size;
+
+    // Repeat rate
+    const customerOrderCounts: Record<string, number> = {};
+    orders.forEach(o => {
+      customerOrderCounts[o.customer_email] = (customerOrderCounts[o.customer_email] || 0) + 1;
+    });
+    const repeatCustomers = Object.values(customerOrderCounts).filter(c => c > 1).length;
+    const repeatRate = uniqueCustomers > 0 ? (repeatCustomers / uniqueCustomers) * 100 : 0;
+
+    // Active subscriptions
+    const activeSubscriptions = customers.filter(c => c.subscription_frequency && c.subscription_frequency !== 'none' && !c.subscription_paused).length;
+
+    return { totalRevenue, totalOrders, avgOrderValue, revenueChange, ordersChange, uniqueCustomers, repeatRate, activeSubscriptions };
+  }, [orders, previousPeriodOrders, customers]);
+
+  // Top selling items
+  const topSellingItems = useMemo(() => {
+    const itemStats: Record<string, { name: string; quantity: number; revenue: number; orders: number }> = {};
+
+    orders.forEach(order => {
+      const items = typeof order.items === 'string' ? JSON.parse(order.items || '[]') : order.items || [];
+      items.forEach((item: any) => {
+        const name = item.name || 'Unknown';
+        if (!itemStats[name]) {
+          itemStats[name] = { name, quantity: 0, revenue: 0, orders: 0 };
+        }
+        itemStats[name].quantity += item.quantity || 1;
+        itemStats[name].revenue += (parseFloat(item.price) || 0) * (item.quantity || 1);
+        itemStats[name].orders += 1;
+      });
+    });
+
+    return Object.values(itemStats).sort((a, b) => b.revenue - a.revenue);
+  }, [orders]);
+
+  // Busiest times heatmap data
+  const busiestTimesData = useMemo(() => {
+    const heatmap = Array(7).fill(null).map(() => Array(24).fill(0));
+
+    orders.forEach(order => {
+      const date = new Date(order.created_at);
+      const day = date.getDay();
+      const hour = date.getHours();
+      heatmap[day][hour]++;
+    });
+
+    // Find busiest day and hour
+    let busiestDay = 0, busiestHour = 0, maxDayOrders = 0, maxHourOrders = 0;
+    const dayTotals = [0, 0, 0, 0, 0, 0, 0];
+    const hourTotals = Array(24).fill(0);
+
+    heatmap.forEach((dayData, dayIdx) => {
+      dayData.forEach((count, hourIdx) => {
+        dayTotals[dayIdx] += count;
+        hourTotals[hourIdx] += count;
+      });
+    });
+
+    dayTotals.forEach((count, idx) => {
+      if (count > maxDayOrders) { maxDayOrders = count; busiestDay = idx; }
+    });
+    hourTotals.forEach((count, idx) => {
+      if (count > maxHourOrders) { maxHourOrders = count; busiestHour = idx; }
+    });
+
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    return { heatmap, busiestDay: dayNames[busiestDay], busiestHour: `${busiestHour}:00`, peakOrders: Math.max(...heatmap.flat()), dayTotals, hourTotals };
+  }, [orders]);
+
+  // Customer analytics
+  const customerAnalytics = useMemo(() => {
+    const customerOrders: Record<string, { email: string; name: string; orders: number; totalSpend: number; firstOrder: string; lastOrder: string }> = {};
+
+    orders.forEach(order => {
+      const email = order.customer_email || 'unknown';
+      if (!customerOrders[email]) {
+        customerOrders[email] = { email, name: order.customer_name || 'Unknown', orders: 0, totalSpend: 0, firstOrder: order.created_at, lastOrder: order.created_at };
+      }
+      customerOrders[email].orders++;
+      customerOrders[email].totalSpend += parseFloat(order.total_amount) || 0;
+      if (order.created_at < customerOrders[email].firstOrder) customerOrders[email].firstOrder = order.created_at;
+      if (order.created_at > customerOrders[email].lastOrder) customerOrders[email].lastOrder = order.created_at;
+    });
+
+    const allCustomers = Object.values(customerOrders);
+    const oneTime = allCustomers.filter(c => c.orders === 1).length;
+    const regular = allCustomers.filter(c => c.orders >= 2 && c.orders <= 5).length;
+    const loyal = allCustomers.filter(c => c.orders > 5).length;
+    const avgLTV = allCustomers.length > 0 ? allCustomers.reduce((sum, c) => sum + c.totalSpend, 0) / allCustomers.length : 0;
+
+    return { customerOrders: allCustomers.sort((a, b) => b.totalSpend - a.totalSpend), oneTime, regular, loyal, avgLTV, total: allCustomers.length };
+  }, [orders]);
+
+  // Preference analytics
+  const preferenceAnalytics = useMemo(() => {
+    const stats = {
+      starch: { None: 0, Light: 0, Medium: 0, Heavy: 0 } as Record<string, number>,
+      finish: { 'On Hanger': 0, Folded: 0 } as Record<string, number>,
+      detergent: { 'Standard Scent': 0, Unscented: 0, Hypoallergenic: 0 } as Record<string, number>,
+      ecoOptions: { noPlastic: 0, recycleHangers: 0 },
+      repairs: 0,
+      totalWithPrefs: 0
+    };
+
+    orders.forEach(order => {
+      if (order.preferences) {
+        stats.totalWithPrefs++;
+        const prefs = typeof order.preferences === 'string' ? JSON.parse(order.preferences) : order.preferences;
+        if (prefs.starch && stats.starch[prefs.starch] !== undefined) stats.starch[prefs.starch]++;
+        if (prefs.finish && stats.finish[prefs.finish] !== undefined) stats.finish[prefs.finish]++;
+        if (prefs.detergent && stats.detergent[prefs.detergent] !== undefined) stats.detergent[prefs.detergent]++;
+        if (prefs.no_plastic) stats.ecoOptions.noPlastic++;
+        if (prefs.recycle_hangers) stats.ecoOptions.recycleHangers++;
+        if (prefs.auth_repairs) stats.repairs++;
+      }
+    });
+
+    return stats;
+  }, [orders]);
+
+  // Driver performance
+  const driverPerformance = useMemo(() => {
+    const driverStats: Record<string, { name: string; collections: number; deliveries: number; totalJobs: number }> = {};
+
+    orders.forEach(order => {
+      if (order.collection_driver?.name) {
+        const name = order.collection_driver.name;
+        if (!driverStats[name]) driverStats[name] = { name, collections: 0, deliveries: 0, totalJobs: 0 };
+        driverStats[name].collections++;
+        driverStats[name].totalJobs++;
+      }
+      if (order.delivery_driver?.name) {
+        const name = order.delivery_driver.name;
+        if (!driverStats[name]) driverStats[name] = { name, collections: 0, deliveries: 0, totalJobs: 0 };
+        driverStats[name].deliveries++;
+        driverStats[name].totalJobs++;
+      }
+    });
+
+    return Object.values(driverStats).sort((a, b) => b.totalJobs - a.totalJobs);
+  }, [orders]);
+
+  // Revenue by day chart data
+  const revenueByDay = useMemo(() => {
+    const grouped = groupByDate(orders);
+    return grouped.slice(-14).map(d => ({ label: new Date(d.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }), value: d.total }));
+  }, [orders]);
+
+  // Export functions
+  const exportToCSV = (data: any[], filename: string) => {
+    if (data.length === 0) return;
+    const headers = Object.keys(data[0]).join(',');
+    const rows = data.map(row => Object.values(row).map(val => typeof val === 'object' ? JSON.stringify(val) : `"${val}"`).join(','));
     const csv = [headers, ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${reportType}_report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
   };
 
-  const exportToExcel = () => {
-    // For Excel export, we'll use CSV format with .xlsx extension
-    // In production, you'd use a library like xlsx
-    exportToCSV();
+  const printReport = () => {
+    window.print();
   };
 
-  const exportToPDF = () => {
-    alert('PDF export coming soon! For now, please use CSV or print this page.');
-  };
+  // Sidebar navigation items
+  const navItems: { id: ReportView; icon: React.ReactNode; label: string }[] = [
+    { id: 'dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+    { id: 'revenue', icon: <TrendingUp size={18} />, label: 'Revenue' },
+    { id: 'top-items', icon: <Shirt size={18} />, label: 'Top Items' },
+    { id: 'busiest-times', icon: <Clock size={18} />, label: 'Busiest Times' },
+    { id: 'customers', icon: <Users size={18} />, label: 'Customers' },
+    { id: 'preferences', icon: <Settings size={18} />, label: 'Preferences' },
+    { id: 'drivers', icon: <Truck size={18} />, label: 'Drivers' },
+    { id: 'services', icon: <Layers size={18} />, label: 'Services' },
+    { id: 'subscriptions', icon: <Repeat size={18} />, label: 'Subscriptions' },
+  ];
 
-  const getSalesMetrics = () => {
-    const total = reportData.reduce((sum, order) => sum + (parseFloat(order.total_amount) || 0), 0);
-    const avgOrder = reportData.length > 0 ? total / reportData.length : 0;
-    const totalOrders = reportData.length;
-
-    return { total, avgOrder, totalOrders };
-  };
-
-  const getDriverMetrics = () => {
-    const driverStats: any = {};
-
-    reportData.forEach(order => {
-      const collDriverName = order.collection_driver?.name || 'Unassigned';
-      const delDriverName = order.delivery_driver?.name || 'Unassigned';
-
-      if (order.collection_driver_id) {
-        if (!driverStats[collDriverName]) driverStats[collDriverName] = { deliveries: 0, collections: 0, total: 0 };
-        driverStats[collDriverName].collections++;
-        driverStats[collDriverName].total++;
+  // Table sort handler
+  const handleSort = (key: string) => {
+    setTableSortConfig(current => {
+      if (current?.key === key) {
+        return { key, direction: current.direction === 'asc' ? 'desc' : 'asc' };
       }
-
-      if (order.delivery_driver_id) {
-        if (!driverStats[delDriverName]) driverStats[delDriverName] = { deliveries: 0, collections: 0, total: 0 };
-        driverStats[delDriverName].deliveries++;
-        driverStats[delDriverName].total++;
-      }
+      return { key, direction: 'desc' };
     });
-
-    return driverStats;
-  };
-
-  const getStatusMetrics = () => {
-    const statusCounts: any = {};
-
-    reportData.forEach(order => {
-      const status = order.status || 'unknown';
-      statusCounts[status] = (statusCounts[status] || 0) + 1;
-    });
-
-    return statusCounts;
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <FileText size={28} className="text-trust-blue" />
-            Reports & Analytics
-          </h2>
-          <p className="text-gray-600 text-sm">Generate and export comprehensive business reports</p>
-        </div>
-      </div>
-
-      {/* Report Type Selection */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="font-bold text-lg mb-4">Select Report Type</h3>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <button
-            onClick={() => setReportType('sales')}
-            className={`p-4 rounded-lg border-2 transition ${reportType === 'sales'
-              ? 'border-trust-blue bg-blue-50 text-trust-blue'
-              : 'border-gray-200 hover:border-gray-300'
-              }`}
-          >
-            <TrendingUp size={24} className="mx-auto mb-2" />
-            <div className="font-bold text-sm">Sales Report</div>
-          </button>
-
-          <button
-            onClick={() => setReportType('drivers')}
-            className={`p-4 rounded-lg border-2 transition ${reportType === 'drivers'
-              ? 'border-trust-blue bg-blue-50 text-trust-blue'
-              : 'border-gray-200 hover:border-gray-300'
-              }`}
-          >
-            <Truck size={24} className="mx-auto mb-2" />
-            <div className="font-bold text-sm">Driver Report</div>
-          </button>
-
-          <button
-            onClick={() => setReportType('status')}
-            className={`p-4 rounded-lg border-2 transition ${reportType === 'status'
-              ? 'border-trust-blue bg-blue-50 text-trust-blue'
-              : 'border-gray-200 hover:border-gray-300'
-              }`}
-          >
-            <Package size={24} className="mx-auto mb-2" />
-            <div className="font-bold text-sm">Status Report</div>
-          </button>
-
-          <button
-            onClick={() => setReportType('customers')}
-            className={`p-4 rounded-lg border-2 transition ${reportType === 'customers'
-              ? 'border-trust-blue bg-blue-50 text-trust-blue'
-              : 'border-gray-200 hover:border-gray-300'
-              }`}
-          >
-            <Users size={24} className="mx-auto mb-2" />
-            <div className="font-bold text-sm">Customer Report</div>
-          </button>
-
-          <button
-            onClick={() => setReportType('revenue')}
-            className={`p-4 rounded-lg border-2 transition ${reportType === 'revenue'
-              ? 'border-trust-blue bg-blue-50 text-trust-blue'
-              : 'border-gray-200 hover:border-gray-300'
-              }`}
-          >
-            <TrendingUp size={24} className="mx-auto mb-2" />
-            <div className="font-bold text-sm">Revenue Report</div>
+    <div className="flex h-[calc(100vh-260px)] min-h-[650px] -mx-4 sm:-mx-6 lg:-mx-8 rounded-xl overflow-hidden border border-gray-200">
+      {/* Dark Sidebar */}
+      <aside className={`${sidebarCollapsed ? 'w-16' : 'w-56'} bg-gray-900 text-white flex-shrink-0 transition-all duration-300 flex flex-col`}>
+        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+          {!sidebarCollapsed && (
+            <h3 className="font-bold text-sm flex items-center gap-2">
+              <BarChart3 size={18} className="text-blue-400" /> Reports
+            </h3>
+          )}
+          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)} className="p-1 hover:bg-gray-800 rounded">
+            {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
         </div>
-      </div>
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+          {navItems.map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveReport(item.id)}
+              className={`w-full text-left px-3 py-2.5 rounded-lg flex items-center gap-3 transition-colors text-sm ${
+                activeReport === item.id ? 'bg-blue-600 text-white font-semibold' : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }`}
+              title={sidebarCollapsed ? item.label : undefined}
+            >
+              {item.icon}
+              {!sidebarCollapsed && <span>{item.label}</span>}
+            </button>
+          ))}
+        </nav>
+        {!sidebarCollapsed && (
+          <div className="p-3 border-t border-gray-800">
+            <div className="text-xs text-gray-500 mb-2">Quick Export</div>
+            <div className="flex gap-2">
+              <button onClick={printReport} className="flex-1 p-2 bg-gray-800 hover:bg-gray-700 rounded text-xs flex items-center justify-center gap-1">
+                <Printer size={12} /> Print
+              </button>
+              <button onClick={() => exportToCSV(orders, 'orders')} className="flex-1 p-2 bg-gray-800 hover:bg-gray-700 rounded text-xs flex items-center justify-center gap-1">
+                <Download size={12} /> CSV
+              </button>
+            </div>
+          </div>
+        )}
+      </aside>
 
-      {/* Date Range Filter */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 className="font-bold text-lg mb-4">Date Range</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto bg-gray-50 p-6">
+        {/* Header with Date Range */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">Start Date</label>
+            <h2 className="text-xl font-bold text-gray-900 capitalize">{activeReport.replace('-', ' ')} Report</h2>
+            <p className="text-sm text-gray-500">
+              {new Date(dateRange.start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })} - {new Date(dateRange.end).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-white border rounded-lg overflow-hidden">
+              {(['week', 'month', 'quarter', 'year'] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => handlePresetChange(p)}
+                  className={`px-3 py-1.5 text-xs font-semibold transition ${datePreset === p ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  {p === 'week' ? '7D' : p === 'month' ? '30D' : p === 'quarter' ? '90D' : '1Y'}
+                </button>
+              ))}
+            </div>
             <input
               type="date"
               value={dateRange.start}
-              onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="w-full border rounded-lg p-2"
+              onChange={(e) => { setDateRange(r => ({ ...r, start: e.target.value })); setDatePreset('month'); }}
+              className="border rounded-lg px-2 py-1.5 text-xs"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">End Date</label>
+            <span className="text-gray-400">-</span>
             <input
               type="date"
               value={dateRange.end}
-              onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="w-full border rounded-lg p-2"
+              onChange={(e) => { setDateRange(r => ({ ...r, end: e.target.value })); setDatePreset('month'); }}
+              className="border rounded-lg px-2 py-1.5 text-xs"
             />
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={generateReport}
-              disabled={loading}
-              className="w-full bg-trust-blue text-white py-2 px-4 rounded-lg font-bold hover:bg-trust-blue-hover disabled:opacity-50"
-            >
-              {loading ? 'Generating...' : 'Generate Report'}
-            </button>
+            {loading && <Loader2 size={18} className="animate-spin text-blue-600" />}
           </div>
         </div>
-      </div>
 
-      {/* Report Results */}
-      {reportData.length > 0 && (
-        <>
-          {/* Export Buttons */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="font-bold text-lg mb-4">Export Options</h3>
-            <div className="flex gap-3">
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600"
-              >
-                <Download size={18} />
-                Export CSV
-              </button>
-              <button
-                onClick={exportToExcel}
-                className="flex items-center gap-2 bg-blue-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-600"
-              >
-                <Download size={18} />
-                Export Excel
-              </button>
-              <button
-                onClick={exportToPDF}
-                className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600"
-              >
-                <Download size={18} />
-                Export PDF
-              </button>
+        {/* Dashboard View */}
+        {activeReport === 'dashboard' && (
+          <div className="space-y-6 animate-fade-in">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <KPICard title="Total Revenue" value={formatCurrency(metrics.totalRevenue)} change={metrics.revenueChange} icon={<DollarSign size={20} className="text-green-600" />} color="green" />
+              <KPICard title="Total Orders" value={metrics.totalOrders} change={metrics.ordersChange} icon={<Package size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Avg Order Value" value={formatCurrency(metrics.avgOrderValue)} icon={<Receipt size={20} className="text-purple-600" />} color="purple" />
+              <KPICard title="Repeat Rate" value={`${metrics.repeatRate.toFixed(1)}%`} icon={<Repeat size={20} className="text-orange-600" />} color="orange" subtitle={`${metrics.uniqueCustomers} unique customers`} />
+            </div>
+
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h3 className="font-semibold text-gray-800 mb-4">Revenue Trend (Last 14 Days)</h3>
+                <ReportLineChart data={revenueByDay} height={180} />
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h3 className="font-semibold text-gray-800 mb-4">Top 5 Services by Revenue</h3>
+                <ReportBarChart data={topSellingItems.slice(0, 5).map(i => ({ label: i.name, value: i.revenue }))} height={180} />
+              </div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2"><Clock size={16} className="text-blue-500" /> Busiest Time</h3>
+                <div className="text-2xl font-bold text-gray-900">{busiestTimesData.busiestDay}</div>
+                <div className="text-sm text-gray-500">Peak hour: {busiestTimesData.busiestHour}</div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2"><Shirt size={16} className="text-green-500" /> Top Item</h3>
+                <div className="text-2xl font-bold text-gray-900">{topSellingItems[0]?.name || 'N/A'}</div>
+                <div className="text-sm text-gray-500">{topSellingItems[0]?.quantity || 0} sold ({formatCurrency(topSellingItems[0]?.revenue || 0)})</div>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2"><Heart size={16} className="text-red-500" /> Active Subscriptions</h3>
+                <div className="text-2xl font-bold text-gray-900">{metrics.activeSubscriptions}</div>
+                <div className="text-sm text-gray-500">Recurring customers</div>
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Metrics Dashboard */}
-          {reportType === 'sales' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="text-gray-600 text-sm font-bold mb-2">Total Revenue</div>
-                <div className="text-3xl font-bold text-green-600">£{getSalesMetrics().total.toFixed(2)}</div>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="text-gray-600 text-sm font-bold mb-2">Total Orders</div>
-                <div className="text-3xl font-bold text-blue-600">{getSalesMetrics().totalOrders}</div>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                <div className="text-gray-600 text-sm font-bold mb-2">Average Order Value</div>
-                <div className="text-3xl font-bold text-purple-600">£{getSalesMetrics().avgOrder.toFixed(2)}</div>
-              </div>
+        {/* Revenue View */}
+        {activeReport === 'revenue' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <KPICard title="Total Revenue" value={formatCurrency(metrics.totalRevenue)} change={metrics.revenueChange} icon={<DollarSign size={20} className="text-green-600" />} color="green" />
+              <KPICard title="Total Orders" value={metrics.totalOrders} change={metrics.ordersChange} icon={<Package size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Avg Order Value" value={formatCurrency(metrics.avgOrderValue)} icon={<Target size={20} className="text-purple-600" />} color="purple" />
             </div>
-          )}
-
-          {reportType === 'drivers' && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="font-bold text-lg mb-4">Driver Performance</h3>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">Daily Revenue Trend</h3>
+              <ReportLineChart data={revenueByDay} height={250} />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold text-gray-800">Orders Detail</h3>
+                <button onClick={() => exportToCSV(orders, 'revenue_report')} className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"><Download size={14} /> Export</button>
+              </div>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full text-sm">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Driver</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Collections</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Deliveries</th>
-                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-700 uppercase">Total Jobs</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Order #</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Customer</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Status</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Amount</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {Object.entries(getDriverMetrics()).map(([driver, stats]: [string, any]) => (
-                      <tr key={driver}>
-                        <td className="px-4 py-3 font-bold">{driver}</td>
-                        <td className="px-4 py-3">{stats.collections}</td>
-                        <td className="px-4 py-3">{stats.deliveries}</td>
-                        <td className="px-4 py-3 font-bold">{stats.total}</td>
+                  <tbody className="divide-y divide-gray-100">
+                    {orders.slice(0, 20).map(order => (
+                      <tr key={order.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-semibold text-blue-600">#{order.readable_id}</td>
+                        <td className="px-4 py-3 text-gray-700">{order.customer_name}</td>
+                        <td className="px-4 py-3 text-gray-500">{new Date(order.created_at).toLocaleDateString()}</td>
+                        <td className="px-4 py-3"><span className="px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 capitalize">{order.status}</span></td>
+                        <td className="px-4 py-3 text-right font-bold text-gray-900">{formatCurrency(parseFloat(order.total_amount) || 0)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {reportType === 'status' && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h3 className="font-bold text-lg mb-4">Order Status Breakdown</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {Object.entries(getStatusMetrics()).map(([status, count]: [string, any]) => (
-                  <div key={status} className="p-4 bg-gray-50 rounded-lg">
-                    <div className="text-gray-600 text-sm font-bold mb-1 capitalize">{status}</div>
-                    <div className="text-2xl font-bold">{count}</div>
-                  </div>
-                ))}
+        {/* Top Items View */}
+        {activeReport === 'top-items' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <KPICard title="Total Items Sold" value={topSellingItems.reduce((s, i) => s + i.quantity, 0)} icon={<Package size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Top Item" value={topSellingItems[0]?.name || 'N/A'} icon={<Award size={20} className="text-orange-600" />} color="orange" subtitle={`${topSellingItems[0]?.quantity || 0} sold`} />
+              <KPICard title="Items Revenue" value={formatCurrency(topSellingItems.reduce((s, i) => s + i.revenue, 0))} icon={<DollarSign size={20} className="text-green-600" />} color="green" />
+              <KPICard title="Unique Items" value={topSellingItems.length} icon={<Layers size={20} className="text-purple-600" />} color="purple" />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">Top 10 Items by Revenue</h3>
+              <ReportBarChart data={topSellingItems.slice(0, 10).map(i => ({ label: i.name, value: i.revenue, color: '#0056b3' }))} height={220} />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold text-gray-800">All Items Performance</h3>
+                <input type="text" placeholder="Search items..." value={tableSearchTerm} onChange={(e) => setTableSearchTerm(e.target.value)} className="border rounded-lg px-3 py-1.5 text-sm w-48" />
+              </div>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('name')}>Item Name {tableSortConfig?.key === 'name' && (tableSortConfig.direction === 'asc' ? '↑' : '↓')}</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('quantity')}>Qty Sold {tableSortConfig?.key === 'quantity' && (tableSortConfig.direction === 'asc' ? '↑' : '↓')}</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase cursor-pointer hover:bg-gray-100" onClick={() => handleSort('revenue')}>Revenue {tableSortConfig?.key === 'revenue' && (tableSortConfig.direction === 'asc' ? '↑' : '↓')}</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Avg Price</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Orders</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {topSellingItems
+                      .filter(i => i.name.toLowerCase().includes(tableSearchTerm.toLowerCase()))
+                      .sort((a, b) => {
+                        if (!tableSortConfig) return 0;
+                        const aVal = a[tableSortConfig.key as keyof typeof a];
+                        const bVal = b[tableSortConfig.key as keyof typeof b];
+                        return tableSortConfig.direction === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
+                      })
+                      .map((item, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-medium text-gray-800">{item.name}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{item.quantity}</td>
+                          <td className="px-4 py-3 text-right font-bold text-green-600">{formatCurrency(item.revenue)}</td>
+                          <td className="px-4 py-3 text-right text-gray-500">{formatCurrency(item.quantity > 0 ? item.revenue / item.quantity : 0)}</td>
+                          <td className="px-4 py-3 text-right text-gray-500">{item.orders}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Data Table */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 className="font-bold text-lg mb-4">Detailed Data ({reportData.length} records)</h3>
-            <div className="overflow-x-auto max-h-96 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0">
-                  <tr>
-                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase">Order #</th>
-                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase">Customer</th>
-                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase">Date</th>
-                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase">Status</th>
-                    <th className="px-4 py-2 text-left text-xs font-bold text-gray-700 uppercase">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {reportData.map((order) => (
-                    <tr key={order.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 font-bold">#{order.readable_id}</td>
-                      <td className="px-4 py-2">{order.customer_name}</td>
-                      <td className="px-4 py-2">{new Date(order.created_at).toLocaleDateString()}</td>
-                      <td className="px-4 py-2">
-                        <span className="px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700">
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 font-bold">£{parseFloat(order.total_amount || 0).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Busiest Times View */}
+        {activeReport === 'busiest-times' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <KPICard title="Busiest Day" value={busiestTimesData.busiestDay} icon={<CalendarDays size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Peak Hour" value={busiestTimesData.busiestHour} icon={<Clock size={20} className="text-orange-600" />} color="orange" />
+              <KPICard title="Peak Orders/Hour" value={busiestTimesData.peakOrders} icon={<TrendingUp size={20} className="text-green-600" />} color="green" />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h3 className="font-semibold text-gray-800 mb-2">Weekly Order Heatmap</h3>
+              <p className="text-sm text-gray-500 mb-4">Darker colors indicate higher order volumes</p>
+              <ReportHeatmap data={busiestTimesData.heatmap} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <h3 className="font-semibold text-gray-800 mb-4">Orders by Day of Week</h3>
+                <ReportBarChart data={['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => ({ label: d, value: busiestTimesData.dayTotals[i] }))} height={180} />
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <h3 className="font-semibold text-gray-800 mb-4">Hourly Distribution (Business Hours)</h3>
+                <ReportBarChart data={busiestTimesData.hourTotals.slice(7, 20).map((v, i) => ({ label: `${i + 7}h`, value: v }))} height={180} barColor="#10b981" />
+              </div>
             </div>
           </div>
-        </>
-      )}
+        )}
 
-      {reportData.length === 0 && !loading && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <FileText size={64} className="mx-auto text-gray-300 mb-4" />
-          <h3 className="text-xl font-bold text-gray-700 mb-2">No Data Yet</h3>
-          <p className="text-gray-500">Select a date range and click "Generate Report" to view data</p>
-        </div>
-      )}
+        {/* Customers View */}
+        {activeReport === 'customers' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <KPICard title="Total Customers" value={customerAnalytics.total} icon={<Users size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Repeat Rate" value={`${metrics.repeatRate.toFixed(1)}%`} icon={<Repeat size={20} className="text-green-600" />} color="green" />
+              <KPICard title="Avg Lifetime Value" value={formatCurrency(customerAnalytics.avgLTV)} icon={<Target size={20} className="text-purple-600" />} color="purple" />
+              <KPICard title="Loyal Customers" value={customerAnalytics.loyal} icon={<Heart size={20} className="text-red-600" />} color="red" subtitle="6+ orders" />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <h3 className="font-semibold text-gray-800 mb-4">Customer Segments</h3>
+                <ReportDonutChart
+                  data={[
+                    { label: 'One-time', value: customerAnalytics.oneTime, color: '#94a3b8' },
+                    { label: 'Regular (2-5)', value: customerAnalytics.regular, color: '#3b82f6' },
+                    { label: 'Loyal (6+)', value: customerAnalytics.loyal, color: '#10b981' }
+                  ]}
+                  centerValue={customerAnalytics.total}
+                  centerLabel="Total"
+                />
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <h3 className="font-semibold text-gray-800 mb-4">Top Customers by Spend</h3>
+                <ReportBarChart data={customerAnalytics.customerOrders.slice(0, 8).map(c => ({ label: c.name.split(' ')[0], value: c.totalSpend }))} height={180} barColor="#8b5cf6" />
+              </div>
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">Customer Details</h3>
+              <div className="overflow-x-auto max-h-80 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Customer</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Orders</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Total Spend</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">First Order</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Last Order</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {customerAnalytics.customerOrders.slice(0, 20).map((c, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3"><div className="font-medium text-gray-800">{c.name}</div><div className="text-xs text-gray-500">{c.email}</div></td>
+                        <td className="px-4 py-3 text-right font-semibold text-gray-700">{c.orders}</td>
+                        <td className="px-4 py-3 text-right font-bold text-green-600">{formatCurrency(c.totalSpend)}</td>
+                        <td className="px-4 py-3 text-gray-500">{new Date(c.firstOrder).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-gray-500">{new Date(c.lastOrder).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Preferences View */}
+        {activeReport === 'preferences' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center gap-3">
+              <Info size={20} className="text-blue-600" />
+              <p className="text-sm text-blue-800">Preference data from <strong>{preferenceAnalytics.totalWithPrefs}</strong> orders with recorded preferences.</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-4">Starch Level</h4>
+                <ReportDonutChart
+                  data={Object.entries(preferenceAnalytics.starch).filter(([_, v]) => v > 0).map(([k, v]) => ({ label: k, value: v, color: k === 'None' ? '#94a3b8' : k === 'Light' ? '#93c5fd' : k === 'Medium' ? '#3b82f6' : '#1d4ed8' }))}
+                  size={120}
+                />
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-4">Finish Style</h4>
+                <ReportDonutChart
+                  data={Object.entries(preferenceAnalytics.finish).filter(([_, v]) => v > 0).map(([k, v]) => ({ label: k, value: v, color: k === 'On Hanger' ? '#10b981' : '#f59e0b' }))}
+                  size={120}
+                />
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-4">Detergent Choice</h4>
+                <ReportDonutChart
+                  data={Object.entries(preferenceAnalytics.detergent).filter(([_, v]) => v > 0).map(([k, v]) => ({ label: k, value: v, color: k === 'Standard Scent' ? '#8b5cf6' : k === 'Unscented' ? '#94a3b8' : '#ec4899' }))}
+                  size={120}
+                />
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border p-5">
+                <h4 className="text-xs font-bold text-gray-500 uppercase mb-4">Eco & Care Options</h4>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm"><Leaf className="text-green-500" size={16} /> No Plastic</span>
+                    <span className="font-bold text-gray-800">{preferenceAnalytics.ecoOptions.noPlastic}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm"><RefreshCw className="text-green-500" size={16} /> Recycle Hangers</span>
+                    <span className="font-bold text-gray-800">{preferenceAnalytics.ecoOptions.recycleHangers}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm"><Scissors className="text-blue-500" size={16} /> Auth Repairs</span>
+                    <span className="font-bold text-gray-800">{preferenceAnalytics.repairs}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Drivers View */}
+        {activeReport === 'drivers' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <KPICard title="Active Drivers" value={driverPerformance.length} icon={<Truck size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Total Jobs" value={driverPerformance.reduce((s, d) => s + d.totalJobs, 0)} icon={<Package size={20} className="text-green-600" />} color="green" />
+              <KPICard title="Top Performer" value={driverPerformance[0]?.name || 'N/A'} icon={<Award size={20} className="text-orange-600" />} color="orange" subtitle={`${driverPerformance[0]?.totalJobs || 0} jobs`} />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">Driver Performance</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Driver</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Collections</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Deliveries</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-gray-600 uppercase">Total Jobs</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase">Performance</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {driverPerformance.map((driver, idx) => {
+                      const maxJobs = driverPerformance[0]?.totalJobs || 1;
+                      const performancePercent = (driver.totalJobs / maxJobs) * 100;
+                      return (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 font-semibold text-gray-800">{driver.name}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{driver.collections}</td>
+                          <td className="px-4 py-3 text-right text-gray-700">{driver.deliveries}</td>
+                          <td className="px-4 py-3 text-right font-bold text-gray-900">{driver.totalJobs}</td>
+                          <td className="px-4 py-3">
+                            <div className="w-24 h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-600 rounded-full" style={{ width: `${performancePercent}%` }} />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Services View */}
+        {activeReport === 'services' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <KPICard title="Total Services Sold" value={topSellingItems.reduce((s, i) => s + i.quantity, 0)} icon={<Layers size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Service Revenue" value={formatCurrency(topSellingItems.reduce((s, i) => s + i.revenue, 0))} icon={<DollarSign size={20} className="text-green-600" />} color="green" />
+              <KPICard title="Unique Services" value={topSellingItems.length} icon={<Shirt size={20} className="text-purple-600" />} color="purple" />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">Service Category Performance</h3>
+              <ReportBarChart data={topSellingItems.slice(0, 12).map(i => ({ label: i.name, value: i.revenue }))} height={220} />
+            </div>
+          </div>
+        )}
+
+        {/* Subscriptions View */}
+        {activeReport === 'subscriptions' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <KPICard title="Active Subscriptions" value={metrics.activeSubscriptions} icon={<Repeat size={20} className="text-green-600" />} color="green" />
+              <KPICard title="Paused" value={customers.filter(c => c.subscription_paused).length} icon={<Pause size={20} className="text-orange-600" />} color="orange" />
+              <KPICard title="Weekly" value={customers.filter(c => c.subscription_frequency === 'weekly').length} icon={<CalendarDays size={20} className="text-blue-600" />} color="blue" />
+              <KPICard title="Monthly" value={customers.filter(c => c.subscription_frequency === 'monthly').length} icon={<Calendar size={20} className="text-purple-600" />} color="purple" />
+            </div>
+            <div className="bg-white rounded-xl shadow-sm border p-6">
+              <h3 className="font-semibold text-gray-800 mb-4">Subscription Distribution</h3>
+              <ReportDonutChart
+                data={[
+                  { label: 'Weekly', value: customers.filter(c => c.subscription_frequency === 'weekly' && !c.subscription_paused).length, color: '#3b82f6' },
+                  { label: 'Fortnightly', value: customers.filter(c => c.subscription_frequency === 'fortnightly' && !c.subscription_paused).length, color: '#8b5cf6' },
+                  { label: 'Monthly', value: customers.filter(c => c.subscription_frequency === 'monthly' && !c.subscription_paused).length, color: '#10b981' },
+                  { label: 'Paused', value: customers.filter(c => c.subscription_paused).length, color: '#94a3b8' }
+                ].filter(d => d.value > 0)}
+                centerValue={metrics.activeSubscriptions}
+                centerLabel="Active"
+                size={180}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {orders.length === 0 && !loading && (
+          <div className="bg-white rounded-xl shadow-sm border p-12 text-center">
+            <FileText size={64} className="mx-auto text-gray-300 mb-4" />
+            <h3 className="text-xl font-bold text-gray-700 mb-2">No Data Available</h3>
+            <p className="text-gray-500">No orders found for the selected date range. Try adjusting your filters.</p>
+          </div>
+        )}
+      </main>
+
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          aside, .no-print { display: none !important; }
+          main { margin: 0; padding: 20px; overflow: visible !important; height: auto !important; }
+          .bg-gray-50 { background: white !important; }
+        }
+      `}</style>
     </div>
   );
 };
@@ -7100,19 +9486,29 @@ const App: React.FC = () => {
     const detectTenant = async () => {
       const hostname = window.location.hostname;
       const parts = hostname.split('.');
+      const params = new URLSearchParams(window.location.search);
+      const forceTenant = params.get('tenant');
 
-      // If we're on a subdomain (e.g. royal.cleanpos.app)
-      if (parts.length >= 3 && parts[0] !== 'www') {
-        const subdomain = parts[0];
+      let subdomain = '';
 
+      if (forceTenant) {
+        subdomain = forceTenant;
+      } else if (parts.length >= 3 && parts[0] !== 'www') {
+        // Handle standard subdomains (e.g., class1.cleanpos.app or class1.netlify.app)
+        subdomain = parts[0];
+      } else if (parts.length >= 2 && parts[parts.length - 1] === 'localhost') {
+        // Handle localhost (e.g., class1.localhost)
+        subdomain = parts[0];
+      }
+
+      if (subdomain) {
         if (subdomain === 'master') {
-          // Check for master admin session from localStorage for demo purposes
           const isMaster = localStorage.getItem('master_admin_auth') === 'true';
           if (isMaster) {
             setUserRole('master_admin');
             setCurrentPage('master-admin');
           } else {
-            setCurrentPage('home'); // Redirect to login if not authenticated? Or just let it show landing
+            setCurrentPage('home');
             setMasterAuthOpen(true);
           }
           return;
@@ -7134,33 +9530,12 @@ const App: React.FC = () => {
           if (cSettings) setCompanySettings(cSettings);
 
           setCurrentPage('home');
-        } else {
-          setCurrentPage('saas-landing');
+          return;
         }
-      } else {
-        // Main domain or localhost without subdomain
-        // For local development, if we find a subdomain in the host (e.g. royal.localhost)
-        if (parts.length >= 2 && parts[parts.length - 1] === 'localhost') {
-          const subdomain = parts[0];
-          const { data, error } = await supabase.from('tenants').select('*').eq('subdomain', subdomain).maybeSingle();
-          if (data) {
-            setTenant(data);
-            const { data: sData } = await supabase.from('cp_app_settings').select('*').eq('tenant_id', data.id);
-            if (sData) {
-              const settingsMap: any = {};
-              sData.forEach(s => settingsMap[s.key] = s.value);
-              setAppSettings(settingsMap);
-            }
-
-            const { data: cSettings } = await supabase.from('company_settings').select('*').eq('tenant_id', data.id).maybeSingle();
-            if (cSettings) setCompanySettings(cSettings);
-
-            setCurrentPage('home');
-            return;
-          }
-        }
-        setCurrentPage('saas-landing');
       }
+
+      // Fallback to landing page if no tenant detected
+      setCurrentPage('saas-landing');
     };
     detectTenant();
   }, []);

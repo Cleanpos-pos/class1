@@ -6,12 +6,28 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
     apiVersion: '2023-10-16',
 })
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+// Dynamic CORS for multi-tenant subdomains
+const getAllowedOrigin = (req: Request): string => {
+    const origin = req.headers.get('origin') || '';
+    // Allow cleanpos.app subdomains, localhost for dev
+    if (origin.endsWith('.cleanpos.app') ||
+        origin === 'https://cleanpos.app' ||
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:')) {
+        return origin;
+    }
+    return 'https://cleanpos.app'; // Default fallback
+};
+
+const getCorsHeaders = (req: Request) => ({
+    'Access-Control-Allow-Origin': getAllowedOrigin(req),
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+});
 
 serve(async (req) => {
+    const corsHeaders = getCorsHeaders(req);
+
     if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
     try {
@@ -34,10 +50,11 @@ serve(async (req) => {
             throw new Error('This store has not connected their Stripe account yet.')
         }
 
-        // 2. Fetch platform settings if needed, but we use a flat £1 fee for now.
+        // 2. Platform Fee (Application Fee) - Flat £1.00
+        const feeAmount = 100; // 100 pence = £1.00
 
-        // 3. Get or Create Stripe Customer on the Platform account
-        const customerId = await getOrCreateCustomer(email, customerName, stripe)
+        // 3. Get or Create Stripe Customer ON THE CONNECTED ACCOUNT (Direct Charge)
+        const customerId = await getOrCreateCustomer(email, customerName, stripe, connectedAccountId)
 
         // 4. Update Supabase with the Stripe Customer ID if not already set
         await supabaseClient
@@ -50,13 +67,6 @@ serve(async (req) => {
             const isRecurring = recurring && recurring !== 'none'
             const checkoutAmount = Math.round(amount * 100)
 
-            // Flat £1 fee in cents, capped at 50% of the order value if order is very small
-            // This prevents "application_fee_amount must be less than total" errors
-            let feeAmount = 100
-            if (checkoutAmount > 0 && feeAmount >= checkoutAmount) {
-                feeAmount = Math.floor(checkoutAmount * 0.5)
-            }
-
             const sessionConfig: any = {
                 customer: customerId,
                 payment_method_types: ['card'],
@@ -68,7 +78,7 @@ serve(async (req) => {
                                 name: isRecurring ? `Valet Service - ${recurring}` : 'Order Payment',
                                 description: orderId ? `Order #${orderId}` : `Order for tenant ${tenantId}`,
                             },
-                            unit_amount: checkoutAmount > 0 ? checkoutAmount : 100, // Stripe doesn't allow £0 in payment mode
+                            unit_amount: checkoutAmount > 0 ? checkoutAmount : 100, // Stripe doesn't allow £0
                         },
                         quantity: 1,
                     },
@@ -79,42 +89,37 @@ serve(async (req) => {
                 metadata: {
                     tenant_id: tenantId,
                     order_id: orderId || '',
-                }
-            }
-
-            // Adjust for £0 bookings (e.g. valet bag request where price is TBD)
-            if (checkoutAmount === 0) {
-                // If amount is 0, we just want to save the card for future off-session charges
-                delete sessionConfig.line_items
-                sessionConfig.mode = 'setup'
-                // SetupIntents don't verify destination here usually, we just save to platform customer
-            } else {
-                // Payment mode with Destination Charge
-                sessionConfig.payment_intent_data = {
+                },
+                // Direct Charge Configuration
+                payment_intent_data: (checkoutAmount > 0) ? {
                     application_fee_amount: feeAmount,
-                    transfer_data: {
-                        destination: connectedAccountId,
-                    },
                     metadata: {
                         tenant_id: tenantId,
                         order_id: orderId || '',
                     }
-                }
-
-                if (isRecurring) {
-                    // Save card for future off-session usage
-                    sessionConfig.payment_intent_data.setup_future_usage = 'off_session'
-                }
+                } : undefined
             }
 
-            const session = await stripe.checkout.sessions.create(sessionConfig)
+            if (isRecurring && checkoutAmount > 0) {
+                sessionConfig.payment_intent_data.setup_future_usage = 'off_session';
+            }
+
+            if (checkoutAmount === 0) {
+                delete sessionConfig.line_items;
+                sessionConfig.mode = 'setup';
+            }
+
+            // Create session on the connected account
+            const session = await stripe.checkout.sessions.create(sessionConfig, {
+                stripeAccount: connectedAccountId,
+            })
 
             return new Response(JSON.stringify({ url: session.url, sessionId: session.id }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             })
         }
 
-        return new Response(JSON.stringify({ error: 'Unsupported action' }), { status: 400 })
+        return new Response(JSON.stringify({ error: 'Unsupported action' }), { status: 400, headers: corsHeaders })
     } catch (error: any) {
         console.error('Stripe Function Error:', error)
         return new Response(JSON.stringify({ error: error.message }), {
@@ -124,9 +129,12 @@ serve(async (req) => {
     }
 })
 
-async function getOrCreateCustomer(email: string, name: string, stripe: Stripe) {
-    const customers = await stripe.customers.list({ email, limit: 1 })
+async function getOrCreateCustomer(email: string, name: string, stripe: Stripe, stripeAccount: string) {
+    // List customers on the connected account
+    const customers = await stripe.customers.list({ email, limit: 1 }, { stripeAccount })
     if (customers.data.length > 0) return customers.data[0].id
-    const customer = await stripe.customers.create({ email, name })
+
+    // Create customer on the connected account
+    const customer = await stripe.customers.create({ email, name }, { stripeAccount })
     return customer.id
 }

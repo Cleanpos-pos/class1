@@ -4,15 +4,30 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
     apiVersion: '2023-10-16',
-    httpClient: Stripe.createFetchHttpClient(),
 })
 
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
+// Dynamic CORS for multi-tenant subdomains
+const getAllowedOrigin = (req: Request): string => {
+    const origin = req.headers.get('origin') || '';
+    // Allow cleanpos.app subdomains, localhost for dev
+    if (origin.endsWith('.cleanpos.app') ||
+        origin === 'https://cleanpos.app' ||
+        origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:')) {
+        return origin;
+    }
+    return 'https://cleanpos.app'; // Default fallback
+};
+
+const getCorsHeaders = (req: Request) => ({
+    'Access-Control-Allow-Origin': getAllowedOrigin(req),
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+});
 
 serve(async (req) => {
+    const corsHeaders = getCorsHeaders(req);
+
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
     }
@@ -57,7 +72,7 @@ serve(async (req) => {
             status: 400,
             headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         })
-    } catch (error) {
+    } catch (error: any) {
         return new Response(JSON.stringify({ error: error.message }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 400,

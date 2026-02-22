@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* Custom theme configuration */
+@theme {
+  --color-trust-blue: #0056b3;
+  --color-trust-blue-hover: #004494;
+  --color-eco-green: #28a745;
+  --color-fresh-white: #FFFFFF;
+  --color-text-grey: #333333;
+
+  --font-sans: 'Open Sans', sans-serif;
+  --font-heading: 'Roboto', sans-serif;
+}
+
+/* Custom base styles */
+body {
+  font-family: var(--font-sans);
+  color: var(--color-text-grey);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+}
