@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CleanPos Icon Generator</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+    h1 { color: #6366f1; }
+    .canvas-container {
+      margin: 30px auto;
+      background: #16213e;
+      padding: 30px;
+      border-radius: 20px;
+      display: inline-block;
+    }
+    canvas {
+      border-radius: 40px;
+      box-shadow: 0 10px 40px rgba(99, 102, 241, 0.3);
+    }
+    button {
+      background: linear-gradient(135deg, #6366f1, #06b6d4);
+      color: white;
+      border: none;
+      padding: 15px 40px;
+      font-size: 16px;
+      border-radius: 10px;
+      cursor: pointer;
+      margin: 10px;
+    }
+    button:hover { opacity: 0.9; }
+    .instructions {
+      max-width: 600px;
+      margin: 30px auto;
+      text-align: left;
+      background: #16213e;
+      padding: 20px;
+      border-radius: 10px;
+    }
+    .instructions h3 { color: #06b6d4; }
+    .instructions ol { line-height: 1.8; }
+    a { color: #06b6d4; }
+  </style>
+</head>
+<body>
+  <h1>CleanPos Icon Generator</h1>
+  <p>Generate the app icon for the installer</p>
+
+  <div class="canvas-container">
+    <canvas id="iconCanvas" width="256" height="256"></canvas>
+  </div>
+
+  <div>
+    <button onclick="downloadPNG()">Download PNG (256x256)</button>
+    <button onclick="downloadPNG512()">Download PNG (512x512)</button>
+  </div>
+
+  <div class="instructions">
+    <h3>How to create icon.ico:</h3>
+    <ol>
+      <li>Click "Download PNG" button above</li>
+      <li>Go to <a href="https://convertico.com" target="_blank">convertico.com</a> or <a href="https://icoconvert.com" target="_blank">icoconvert.com</a></li>
+      <li>Upload the downloaded PNG file</li>
+      <li>Convert to ICO format</li>
+      <li>Save as <strong>icon.ico</strong> in the <strong>electron/build/</strong> folder</li>
+      <li>Run <strong>build-installer.bat</strong> to create the installer</li>
+    </ol>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('iconCanvas');
+    const ctx = canvas.getContext('2d');
+    const size = 256;
+
+    function drawIcon(ctx, size) {
+      // Background gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#6366f1');
+      gradient.addColorStop(0.5, '#8b5cf6');
+      gradient.addColorStop(1, '#06b6d4');
+
+      // Draw rounded rectangle background
+      const radius = size * 0.18;
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, radius);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      // Inner glow
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size * 0.38, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Draw hanger icon
+      ctx.save();
+      ctx.translate(size/2, size/2);
+      const scale = size / 256;
+
+      // Hanger body
+      ctx.beginPath();
+      ctx.fillStyle = 'white';
+
+      // Hook circle
+      ctx.beginPath();
+      ctx.arc(0, -70 * scale, 12 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = 'white';
+      ctx.fill();
+
+      // Inner hook
+      ctx.beginPath();
+      ctx.arc(0, -70 * scale, 6 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#6366f1';
+      ctx.fill();
+
+      // Hanger arms
+      ctx.beginPath();
+      ctx.moveTo(0, -55 * scale);
+      ctx.lineTo(-80 * scale, 20 * scale);
+      ctx.lineTo(-85 * scale, 30 * scale);
+      ctx.quadraticCurveTo(-90 * scale, 45 * scale, -75 * scale, 50 * scale);
+      ctx.lineTo(75 * scale, 50 * scale);
+      ctx.quadraticCurveTo(90 * scale, 45 * scale, 85 * scale, 30 * scale);
+      ctx.lineTo(80 * scale, 20 * scale);
+      ctx.lineTo(0, -55 * scale);
+      ctx.fillStyle = 'white';
+      ctx.fill();
+
+      // Hanger bar
+      ctx.fillRect(-70 * scale, 65 * scale, 140 * scale, 8 * scale);
+
+      ctx.restore();
+
+      // Sparkles
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.arc(size * 0.2, size * 0.25, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(size * 0.8, size * 0.3, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(size * 0.75, size * 0.75, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Draw initial icon
+    drawIcon(ctx, size);
+
+    function downloadPNG() {
+      const link = document.createElement('a');
+      link.download = 'cleanpos-icon-256.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    function downloadPNG512() {
+      const canvas512 = document.createElement('canvas');
+      canvas512.width = 512;
+      canvas512.height = 512;
+      const ctx512 = canvas512.getContext('2d');
+      drawIcon(ctx512, 512);
+
+      const link = document.createElement('a');
+      link.download = 'cleanpos-icon-512.png';
+      link.href = canvas512.toDataURL('image/png');
+      link.click();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CleanPos Installer - Splash</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #1a1a3e 0%, #0a0a1a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .installer-container {
+      text-align: center;
+      padding: 40px;
+    }
+
+    /* Animated logo */
+    .logo-wrapper {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      margin: 0 auto 30px;
+    }
+
+    .logo-circle {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: 3px solid transparent;
+      border-top-color: #6366f1;
+      border-right-color: #06b6d4;
+      border-radius: 50%;
+      animation: spin 2s linear infinite;
+    }
+
+    .logo-circle-inner {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      width: calc(100% - 20px);
+      height: calc(100% - 20px);
+      border: 2px solid transparent;
+      border-bottom-color: #8b5cf6;
+      border-left-color: #22d3ee;
+      border-radius: 50%;
+      animation: spin-reverse 1.5s linear infinite;
+    }
+
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes spin-reverse {
+      100% { transform: rotate(-360deg); }
+    }
+
+    .logo-icon {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 50px;
+      height: 50px;
+    }
+
+    .logo-icon svg {
+      fill: white;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Suite badge */
+    .suite-badge {
+      display: inline-block;
+      padding: 6px 18px;
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #a5b4fc;
+      margin-bottom: 15px;
+    }
+
+    /* App name */
+    .app-name {
+      font-size: 42px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 50%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+    }
+
+    .tagline {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 40px;
+    }
+
+    /* Progress section */
+    .progress-section {
+      width: 300px;
+      margin: 0 auto;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 15px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 65%;
+      background: linear-gradient(90deg, #6366f1, #06b6d4, #8b5cf6);
+      border-radius: 3px;
+      animation: progress 2s ease-in-out infinite;
+    }
+
+    @keyframes progress {
+      0% { width: 0%; }
+      50% { width: 75%; }
+      100% { width: 100%; }
+    }
+
+    .status-text {
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+    }
+
+    /* Footer */
+    .footer {
+      position: fixed;
+      bottom: 20px;
+      left: 0;
+      right: 0;
+      text-align: center;
+    }
+
+    .copyright {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Feature cards */
+    .features {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      margin-top: 40px;
+      flex-wrap: wrap;
+    }
+
+    .feature {
+      padding: 15px 25px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    .feature-icon {
+      font-size: 20px;
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="installer-container">
+    <div class="logo-wrapper">
+      <div class="logo-circle"></div>
+      <div class="logo-circle-inner"></div>
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 4.5C11.17 4.5 10.5 5.17 10.5 6C10.5 6.41 10.67 6.77 10.94 7.03L4.13 12.19C3.43 12.72 3 13.53 3 14.41C3 15.84 4.16 17 5.59 17H18.41C19.84 17 21 15.84 21 14.41C21 13.53 20.57 12.72 19.87 12.19L13.06 7.03C13.33 6.77 13.5 6.41 13.5 6C13.5 5.17 12.83 4.5 12 4.5ZM12 6.25C12.14 6.25 12.25 6.36 12.25 6.5C12.25 6.64 12.14 6.75 12 6.75C11.86 6.75 11.75 6.64 11.75 6.5C11.75 6.36 11.86 6.25 12 6.25ZM12 8.5L18.88 13.72C19.14 13.91 19.3 14.15 19.3 14.41C19.3 14.85 18.85 15.3 18.41 15.3H5.59C5.15 15.3 4.7 14.85 4.7 14.41C4.7 14.15 4.86 13.91 5.12 13.72L12 8.5Z"/>
+          <path d="M6 19H18V20H6V19Z"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="suite-badge">Posso One Suite</div>
+    <h1 class="app-name">CleanPos</h1>
+    <p class="tagline">Professional Dry Cleaning & Laundry Management</p>
+
+    <div class="progress-section">
+      <div class="progress-bar">
+        <div class="progress-fill"></div>
+      </div>
+      <p class="status-text">Installing components...</p>
+    </div>
+
+    <div class="features">
+      <div class="feature">
+        <div class="feature-icon">🏷️</div>
+        Label Printing
+      </div>
+      <div class="feature">
+        <div class="feature-icon">💳</div>
+        Card Payments
+      </div>
+      <div class="feature">
+        <div class="feature-icon">👥</div>
+        Customer CRM
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p class="copyright">© 2024 Posso. All rights reserved.</p>
+  </div>
+</body>
+</html>

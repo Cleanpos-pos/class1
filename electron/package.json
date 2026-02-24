@@ -1,0 +1,65 @@
+{
+  "name": "cleanpos",
+  "version": "1.0.0",
+  "description": "CleanPos - Professional Dry Cleaning & Laundry POS - Posso One Suite",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win --x64",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "author": {
+    "name": "Posso",
+    "email": "support@posso.co.uk",
+    "url": "https://posso.co.uk"
+  },
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.posso.cleanpos",
+    "productName": "CleanPos",
+    "copyright": "Copyright © 2024 Posso. All rights reserved.",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!build/**/*",
+      "!dist/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "splash.html",
+        "to": "splash.html"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "CleanPos-Setup-${version}.${ext}",
+      "publisherName": "Posso"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "license": "build/license.txt",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CleanPos",
+      "include": "build/installer.nsh",
+      "warningsAsErrors": false
+    }
+  }
+}

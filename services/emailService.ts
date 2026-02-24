@@ -80,17 +80,26 @@ export const sendBrevoEmail = async ({
     toName,
     subject,
     textContent,
+    senderName,
 }: {
     toEmail: string;
     toName: string;
     subject: string;
     textContent: string;
+    senderName?: string;
 }) => {
     const brevoApiKey = import.meta.env.VITE_BREVO_API_KEY;
 
     if (!brevoApiKey) {
         console.error('[Email Service] Brevo API Key not found in environment variables.');
         return { success: false, error: 'API Key missing' };
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(toEmail)) {
+        console.error(`[Email Service] Invalid email format: ${toEmail}`);
+        return { success: false, error: 'Invalid email format' };
     }
 
     try {
@@ -102,7 +111,7 @@ export const sendBrevoEmail = async ({
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
-                sender: { name: 'Class 1 Dry Cleaners', email: 'Info@posso.uk' },
+                sender: { name: senderName || 'CleanPOS', email: 'Info@posso.uk' },
                 to: [{ email: toEmail, name: toName }],
                 subject: subject,
                 textContent: textContent

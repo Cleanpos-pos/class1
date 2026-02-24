@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CleanPos - Loading</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3e 50%, #0d0d2b 100%);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Animated background particles */
+    .particles {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      z-index: 0;
+    }
+
+    .particle {
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: rgba(99, 179, 237, 0.6);
+      border-radius: 50%;
+      animation: float 8s infinite ease-in-out;
+    }
+
+    .particle:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; }
+    .particle:nth-child(2) { left: 20%; top: 80%; animation-delay: 1s; }
+    .particle:nth-child(3) { left: 30%; top: 40%; animation-delay: 2s; }
+    .particle:nth-child(4) { left: 40%; top: 60%; animation-delay: 3s; }
+    .particle:nth-child(5) { left: 50%; top: 30%; animation-delay: 4s; }
+    .particle:nth-child(6) { left: 60%; top: 70%; animation-delay: 5s; }
+    .particle:nth-child(7) { left: 70%; top: 50%; animation-delay: 6s; }
+    .particle:nth-child(8) { left: 80%; top: 25%; animation-delay: 7s; }
+    .particle:nth-child(9) { left: 90%; top: 85%; animation-delay: 0.5s; }
+    .particle:nth-child(10) { left: 15%; top: 55%; animation-delay: 1.5s; }
+    .particle:nth-child(11) { left: 85%; top: 45%; animation-delay: 2.5s; }
+    .particle:nth-child(12) { left: 45%; top: 90%; animation-delay: 3.5s; }
+
+    @keyframes float {
+      0%, 100% {
+        transform: translateY(0) scale(1);
+        opacity: 0.6;
+      }
+      50% {
+        transform: translateY(-30px) scale(1.5);
+        opacity: 1;
+      }
+    }
+
+    /* Glowing orbs */
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(60px);
+      opacity: 0.4;
+      animation: pulse 6s infinite ease-in-out;
+    }
+
+    .orb-1 {
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+      top: -100px;
+      right: -100px;
+      animation-delay: 0s;
+    }
+
+    .orb-2 {
+      width: 250px;
+      height: 250px;
+      background: radial-gradient(circle, #06b6d4 0%, transparent 70%);
+      bottom: -80px;
+      left: -80px;
+      animation-delay: 2s;
+    }
+
+    .orb-3 {
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation-delay: 4s;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        transform: scale(1);
+        opacity: 0.4;
+      }
+      50% {
+        transform: scale(1.2);
+        opacity: 0.6;
+      }
+    }
+
+    /* Main content */
+    .splash-container {
+      text-align: center;
+      z-index: 10;
+      position: relative;
+    }
+
+    /* Logo icon */
+    .logo-container {
+      margin-bottom: 30px;
+      position: relative;
+    }
+
+    .logo-ring {
+      width: 120px;
+      height: 120px;
+      border: 3px solid transparent;
+      border-top-color: #6366f1;
+      border-right-color: #06b6d4;
+      border-radius: 50%;
+      animation: spin 2s linear infinite;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .logo-ring-inner {
+      width: 100px;
+      height: 100px;
+      border: 2px solid transparent;
+      border-bottom-color: #8b5cf6;
+      border-left-color: #22d3ee;
+      border-radius: 50%;
+      animation: spin-reverse 1.5s linear infinite;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    @keyframes spin {
+      0% { transform: translate(-50%, -50%) rotate(0deg); }
+      100% { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+
+    @keyframes spin-reverse {
+      0% { transform: translate(-50%, -50%) rotate(360deg); }
+      100% { transform: translate(-50%, -50%) rotate(0deg); }
+    }
+
+    .logo-icon {
+      width: 80px;
+      height: 80px;
+      position: relative;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-icon svg {
+      width: 60px;
+      height: 60px;
+      fill: white;
+      filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.5));
+      animation: glow 2s ease-in-out infinite;
+    }
+
+    @keyframes glow {
+      0%, 100% {
+        filter: drop-shadow(0 0 20px rgba(99, 102, 241, 0.5));
+      }
+      50% {
+        filter: drop-shadow(0 0 40px rgba(99, 102, 241, 0.8));
+      }
+    }
+
+    /* Suite branding */
+    .suite-badge {
+      display: inline-block;
+      padding: 6px 16px;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #a5b4fc;
+      margin-bottom: 12px;
+      animation: fadeInUp 0.8s ease-out 0.2s both;
+    }
+
+    /* App name */
+    .app-name {
+      font-size: 48px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff 0%, #a5b4fc 50%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -1px;
+      margin-bottom: 8px;
+      animation: fadeInUp 0.8s ease-out 0.4s both;
+    }
+
+    .app-tagline {
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.6);
+      font-weight: 400;
+      letter-spacing: 1px;
+      margin-bottom: 50px;
+      animation: fadeInUp 0.8s ease-out 0.6s both;
+    }
+
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* Loading bar */
+    .loading-container {
+      width: 280px;
+      margin: 0 auto;
+      animation: fadeInUp 0.8s ease-out 0.8s both;
+    }
+
+    .loading-bar {
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .loading-progress {
+      height: 100%;
+      width: 30%;
+      background: linear-gradient(90deg, #6366f1 0%, #06b6d4 50%, #8b5cf6 100%);
+      border-radius: 4px;
+      animation: loading 1.5s ease-in-out infinite;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+    }
+
+    @keyframes loading {
+      0% {
+        width: 0%;
+        margin-left: 0%;
+      }
+      50% {
+        width: 40%;
+        margin-left: 30%;
+      }
+      100% {
+        width: 0%;
+        margin-left: 100%;
+      }
+    }
+
+    .loading-text {
+      margin-top: 16px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.5);
+      letter-spacing: 1px;
+    }
+
+    .loading-dots {
+      display: inline-block;
+    }
+
+    .loading-dots span {
+      animation: dots 1.4s infinite;
+      opacity: 0;
+    }
+
+    .loading-dots span:nth-child(1) { animation-delay: 0s; }
+    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dots {
+      0%, 80%, 100% { opacity: 0; }
+      40% { opacity: 1; }
+    }
+
+    /* Version */
+    .version {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.3);
+      letter-spacing: 1px;
+    }
+
+    /* Copyright */
+    .copyright {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated background -->
+  <div class="particles">
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+    <div class="particle"></div>
+  </div>
+
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <!-- Main content -->
+  <div class="splash-container">
+    <div class="logo-container">
+      <div class="logo-ring"></div>
+      <div class="logo-ring-inner"></div>
+      <div class="logo-icon">
+        <!-- Hanger/Clean icon -->
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 4.5C11.17 4.5 10.5 5.17 10.5 6C10.5 6.41 10.67 6.77 10.94 7.03L4.13 12.19C3.43 12.72 3 13.53 3 14.41C3 15.84 4.16 17 5.59 17H18.41C19.84 17 21 15.84 21 14.41C21 13.53 20.57 12.72 19.87 12.19L13.06 7.03C13.33 6.77 13.5 6.41 13.5 6C13.5 5.17 12.83 4.5 12 4.5ZM12 6.25C12.14 6.25 12.25 6.36 12.25 6.5C12.25 6.64 12.14 6.75 12 6.75C11.86 6.75 11.75 6.64 11.75 6.5C11.75 6.36 11.86 6.25 12 6.25ZM12 8.5L18.88 13.72C19.14 13.91 19.3 14.15 19.3 14.41C19.3 14.85 18.85 15.3 18.41 15.3H5.59C5.15 15.3 4.7 14.85 4.7 14.41C4.7 14.15 4.86 13.91 5.12 13.72L12 8.5Z"/>
+          <path d="M6 19H18V20H6V19Z"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="suite-badge">Posso One Suite</div>
+    <h1 class="app-name">CleanPos</h1>
+    <p class="app-tagline">Professional Dry Cleaning & Laundry Management</p>
+
+    <div class="loading-container">
+      <div class="loading-bar">
+        <div class="loading-progress"></div>
+      </div>
+      <p class="loading-text">
+        Loading<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>
+      </p>
+    </div>
+  </div>
+
+  <div class="version">v1.0.0</div>
+  <div class="copyright">© 2024 Posso</div>
+</body>
+</html>

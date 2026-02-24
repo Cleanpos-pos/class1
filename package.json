@@ -16,6 +16,7 @@
     "@stripe/stripe-js": "^8.6.1",
     "@supabase/supabase-js": "2.39.3",
     "bcryptjs": "^3.0.3",
+    "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",

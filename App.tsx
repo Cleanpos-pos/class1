@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle } from 'lucide-react';
+import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle, XCircle, Hash, Delete } from 'lucide-react';
+import jsQR from 'jsqr';
 import * as XLSX from 'xlsx';
 import { Page, TimeSlot, CartItem, DeliveryOption, DiscountCode } from './types';
 import { supabase } from './supabaseClient';
@@ -1582,6 +1583,7 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
                     pending: { label: 'Order Received', color: 'yellow', icon: Package, description: 'Your order has been received and is being processed' },
                     dispatched: { label: 'Driver Dispatched', color: 'blue', icon: Truck, description: 'A driver has been dispatched to collect your items' },
                     collecting: { label: 'Collecting Items', color: 'blue', icon: Package, description: 'Driver is collecting your items' },
+                    collection_failed: { label: 'Collection Failed', color: 'red', icon: XCircle, description: 'Collection was unsuccessful - customer or order not ready' },
                     collected: { label: 'Items Collected', color: 'indigo', icon: Check, description: 'Your items have been collected successfully' },
                     cleaning: { label: 'In Cleaning', color: 'purple', icon: Shirt, description: 'Your items are being cleaned and processed' },
                     ready_for_delivery: { label: 'Ready for Delivery', color: 'orange', icon: PackageCheck, description: 'Your items are cleaned and ready for delivery' },
@@ -1593,6 +1595,7 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
                 };
 
                 const getProgressPercentage = (status: string) => {
+                  if (status === 'collection_failed') return 33; // Collection phase percentage
                   const stages = ['pending', 'dispatched', 'collecting', 'collected', 'cleaning', 'ready_for_delivery', 'out_for_delivery', 'delivered', 'completed'];
                   const currentIndex = stages.indexOf(status);
                   return ((currentIndex + 1) / stages.length) * 100;
@@ -1651,6 +1654,23 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
                     {isExpanded && (
                       <div className="px-6 pb-6 bg-gray-50/50 animate-fade-in border-t border-gray-100">
                         <div className="pt-6 space-y-6">
+                          {/* Collection Failed Alert */}
+                          {order.status === 'collection_failed' && (
+                            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                              <div className="flex items-start gap-3">
+                                <XCircle size={20} className="text-red-600 flex-shrink-0 mt-0.5" />
+                                <div>
+                                  <h4 className="font-bold text-red-800 mb-1">Collection Unsuccessful</h4>
+                                  <p className="text-sm text-red-700 mb-1">Our driver was unable to complete the collection.</p>
+                                  {order.collection_failed_reason && (
+                                    <p className="text-xs text-red-600"><span className="font-bold">Reason:</span> {order.collection_failed_reason}</p>
+                                  )}
+                                  <p className="text-xs text-red-600 mt-1">Our team will contact you to reschedule.</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Timeline Card */}
                           <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
                             <h4 className="font-bold text-gray-900 mb-6 flex items-center gap-2">
@@ -1774,6 +1794,91 @@ const BackOfficePage: React.FC<{
   const [repairCharge, setRepairCharge] = useState(0);
   const [isConnectingStripe, setIsConnectingStripe] = useState(false);
 
+  // Print Tags & QR Scanner
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [scannedOrder, setScannedOrder] = useState<any>(null);
+  const [showScannedOrderModal, setShowScannedOrderModal] = useState(false);
+  const [showPrintTagModal, setShowPrintTagModal] = useState(false);
+  const [printTagOrder, setPrintTagOrder] = useState<any>(null);
+  const [printTagCount, setPrintTagCount] = useState(1);
+  const [printToast, setPrintToast] = useState<{ show: boolean; type: 'success' | 'error' | 'warning'; message: string }>({ show: false, type: 'success', message: '' });
+  const [showTouchKeypad, setShowTouchKeypad] = useState(false);
+  const [touchKeypadValue, setTouchKeypadValue] = useState('');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Show fancy print notification pop-up
+  const showPrintToast = (type: 'success' | 'error' | 'warning', message: string) => {
+    setPrintToast({ show: true, type, message });
+    // Auto-dismiss success messages after 3 seconds, errors/warnings require manual dismiss
+    if (type === 'success') {
+      setTimeout(() => setPrintToast(prev => ({ ...prev, show: false })), 3000);
+    }
+  };
+
+  // Collection Failed Modal
+  const [showCollectionFailedModal, setShowCollectionFailedModal] = useState(false);
+  const [collectionFailedReason, setCollectionFailedReason] = useState('');
+  const [collectionFailedOrderId, setCollectionFailedOrderId] = useState<string | null>(null);
+
+  // Generic Fancy Confirm Modal
+  const [fancyConfirm, setFancyConfirm] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    icon?: 'warning' | 'info' | 'success' | 'danger';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }>({ show: false, title: '', message: '', onConfirm: () => {} });
+
+  // Generic Fancy Alert Modal
+  const [fancyAlert, setFancyAlert] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+  }>({ show: false, title: '', message: '', type: 'info' });
+
+  const showFancyConfirm = (options: {
+    title: string;
+    message: string;
+    icon?: 'warning' | 'info' | 'success' | 'danger';
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => void;
+  }) => {
+    setFancyConfirm({ show: true, ...options });
+  };
+
+  const showFancyAlert = (type: 'success' | 'error' | 'warning' | 'info', title: string, message: string) => {
+    setFancyAlert({ show: true, type, title, message });
+  };
+
+  // Surcharge Modal for Edit Order
+  const [showSurchargeModal, setShowSurchargeModal] = useState(false);
+  const [surchargeDescription, setSurchargeDescription] = useState('');
+  const [surchargeAmount, setSurchargeAmount] = useState('');
+
+  const addSurcharge = () => {
+    const amount = parseFloat(surchargeAmount);
+    if (!surchargeDescription.trim() || isNaN(amount) || amount <= 0) {
+      showFancyAlert('warning', 'Invalid Input', 'Please enter a description and valid amount.');
+      return;
+    }
+    setOrderItems([...orderItems, {
+      id: `surcharge_${Date.now()}`,
+      item_name: surchargeDescription.trim(),
+      name: surchargeDescription.trim(),
+      quantity: 1,
+      unit_price: amount,
+      price: amount
+    }]);
+    setShowSurchargeModal(false);
+    setSurchargeDescription('');
+    setSurchargeAmount('');
+  };
+
   const handleConnectStripe = async () => {
     setIsConnectingStripe(true);
     try {
@@ -1794,6 +1899,268 @@ const BackOfficePage: React.FC<{
     } finally {
       setIsConnectingStripe(false);
     }
+  };
+
+  // Print Order Tag function (Electron desktop app)
+  const printOrderTag = async (order: any) => {
+    // Format items summary (e.g., "3x Suits, 2x Shirts")
+    let items: any[] = [];
+    try {
+      items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+    } catch (e) {
+      items = [];
+    }
+
+    const itemsSummary = items.map((item: any) => {
+      const qty = item.quantity || 1;
+      const name = item.item_name || item.name || item.service_name || item.title || item.description || item.product_name || 'Item';
+      return `${qty}x ${name}`;
+    }).join('<br>');
+
+    // Debug: log item structure
+    console.log('Print tag items:', JSON.stringify(items, null, 2));
+
+    // Calculate piece count - 2pc suit = 2 pieces, 3pc suit = 3 pieces, etc.
+    const calculatePieces = (item: any) => {
+      const name = (item.item_name || item.name || item.service_name || '').toLowerCase();
+      const qty = item.quantity || 1;
+
+      // Check for Xpc pattern (2pc, 3pc, etc.)
+      const pcMatch = name.match(/(\d+)\s*pc/);
+      if (pcMatch) {
+        return qty * parseInt(pcMatch[1]);
+      }
+
+      // Default: 1 piece per item
+      return qty;
+    };
+
+    const totalPieces = items.reduce((sum: number, i: any) => sum + calculatePieces(i), 0);
+
+    const tagData = {
+      storeName: settings.store_name || tenant?.name || 'Class 1 Dry Cleaners',
+      ticketNumber: order.pos_ticket_id || order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---',
+      customerName: order.customer_name || 'Walk-in',
+      customerPhone: order.customer_phone || '',
+      customerAddress: order.customer_address || '',
+      itemCount: totalPieces,
+      items: items.map((i: any) => `${i.quantity || 1}x ${i.item_name || i.name || i.service_name || 'Item'}`).join(', '),
+      itemsSummary: itemsSummary,
+      dueDate: order.due_date ? new Date(order.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD',
+      notes: order.notes || '',
+      orderId: order.id,
+      qrData: order.readable_id || order.pos_ticket_id || order.id // QR code contains readable order ID for scanning
+    };
+
+    // Check if running in Electron
+    if ((window as any).electronPrint) {
+      const result = await (window as any).electronPrint.printTag(tagData);
+      if (result.success) {
+        showPrintToast('success', 'Tag sent to printer!');
+      } else {
+        showPrintToast('error', 'Print failed: ' + (result.error || 'Unknown error'));
+      }
+    } else {
+      // Fallback: Open print preview in new window
+      const printWindow = window.open('', '_blank', 'width=400,height=600');
+      if (printWindow) {
+        printWindow.document.write(generatePrintTagHtml(tagData));
+        printWindow.document.close();
+        printWindow.print();
+        showPrintToast('success', 'Print preview opened');
+      } else {
+        showPrintToast('warning', 'Pop-up blocked. Please allow pop-ups.');
+      }
+    }
+  };
+
+  // Generate print tag HTML for browser fallback
+  const generatePrintTagHtml = (tagData: any) => `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Print Tag - #${tagData.ticketNumber}</title>
+      <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        @page { size: 62mm 100mm; margin: 0; }
+        @media print { body { width: 62mm; height: 100mm; } }
+        body { font-family: Arial, sans-serif; width: 62mm; padding: 3mm; background: white; color: black; }
+        .tag { border: 1px solid #000; padding: 2mm; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 2mm; margin-bottom: 2mm; }
+        .ticket { font-size: 16pt; font-weight: bold; }
+        .count { background: #000; color: #fff; padding: 1mm 3mm; border-radius: 2mm; font-weight: bold; }
+        .customer { border-bottom: 1px dashed #999; padding-bottom: 2mm; margin-bottom: 2mm; }
+        .name { font-size: 14pt; font-weight: bold; }
+        .phone, .address { font-size: 9pt; color: #333; }
+        .items { border-bottom: 1px dashed #999; padding-bottom: 2mm; margin-bottom: 2mm; }
+        .items-title { font-size: 8pt; font-weight: bold; color: #666; text-transform: uppercase; }
+        .items-list { font-size: 10pt; line-height: 1.4; }
+        .footer { display: flex; justify-content: space-between; align-items: flex-end; }
+        .due { font-size: 10pt; font-weight: bold; }
+        .qr { width: 18mm; height: 18mm; }
+        .scan-text { font-size: 5pt; text-align: center; color: #666; }
+      </style>
+    </head>
+    <body>
+      <div class="tag">
+        <div class="header">
+          <span class="ticket">#${tagData.ticketNumber}</span>
+          <span class="count">${tagData.itemCount} items</span>
+        </div>
+        <div class="customer">
+          <div class="name">${tagData.customerName}</div>
+          <div class="phone">${tagData.customerPhone}</div>
+          <div class="address">${tagData.customerAddress}</div>
+        </div>
+        <div class="items">
+          <div class="items-title">Order Items</div>
+          <div class="items-list">${tagData.itemsSummary}</div>
+        </div>
+        <div class="footer">
+          <div><div class="due">Due: ${tagData.dueDate}</div></div>
+          <div><div class="qr" id="qr"></div><div class="scan-text">Scan to load</div></div>
+        </div>
+      </div>
+      <script>
+        var qr = qrcode(0, 'M');
+        qr.addData('${tagData.orderId}');
+        qr.make();
+        document.getElementById('qr').innerHTML = qr.createSvgTag(2, 0);
+      </script>
+    </body>
+    </html>
+  `;
+
+  // QR Scanner functions
+  const startQRScanner = async () => {
+    setShowQRScanner(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+        requestAnimationFrame(scanQRCode);
+      }
+    } catch (err) {
+      alert('Could not access camera. Please check permissions.');
+      setShowQRScanner(false);
+    }
+  };
+
+  const stopQRScanner = () => {
+    if (videoRef.current?.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach(track => track.stop());
+    }
+    setShowQRScanner(false);
+  };
+
+  const scanQRCode = async () => {
+    if (!showQRScanner || !videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (video.readyState === video.HAVE_ENOUGH_DATA && ctx) {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Use jsQR library for reliable QR scanning
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+      });
+
+      if (code) {
+        await loadScannedOrder(code.data);
+        stopQRScanner();
+        return;
+      }
+
+      // Fallback: Try BarcodeDetector API if available
+      if ('BarcodeDetector' in window) {
+        try {
+          const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+          const barcodes = await detector.detect(canvas);
+          if (barcodes.length > 0) {
+            const orderId = barcodes[0].rawValue;
+            await loadScannedOrder(orderId);
+            stopQRScanner();
+            return;
+          }
+        } catch (e) {
+          // BarcodeDetector failed, continue scanning
+        }
+      }
+    }
+
+    if (showQRScanner) {
+      requestAnimationFrame(scanQRCode);
+    }
+  };
+
+  const loadScannedOrder = async (orderId: string) => {
+    try {
+      // Clean up the input - remove # prefix if present
+      const cleanId = orderId.replace(/^#/, '').trim();
+
+      // First try to find by UUID (full id) - include items via join
+      let { data, error } = await supabase
+        .from('cp_orders')
+        .select('*, items:cp_order_items(*)')
+        .eq('id', orderId)
+        .single();
+
+      // If not found by UUID, try by readable_id
+      if (error || !data) {
+        const { data: dataByReadable, error: errorByReadable } = await supabase
+          .from('cp_orders')
+          .select('*, items:cp_order_items(*)')
+          .eq('readable_id', cleanId.toUpperCase())
+          .single();
+
+        if (!errorByReadable && dataByReadable) {
+          data = dataByReadable;
+          error = null;
+        }
+      }
+
+      // If still not found, try by pos_ticket_id
+      if (error || !data) {
+        const { data: dataByTicket, error: errorByTicket } = await supabase
+          .from('cp_orders')
+          .select('*, items:cp_order_items(*)')
+          .eq('pos_ticket_id', cleanId)
+          .single();
+
+        if (!errorByTicket && dataByTicket) {
+          data = dataByTicket;
+          error = null;
+        }
+      }
+
+      if (error || !data) {
+        alert('Order not found: ' + orderId);
+        return;
+      }
+
+      // Debug: log order data to check items
+      console.log('Scanned order data:', { id: data.id, items: data.items, itemCount: data.items?.length });
+
+      setScannedOrder(data);
+      setShowScannedOrderModal(true);
+    } catch (err) {
+      alert('Error loading order');
+    }
+  };
+
+  const handleManualOrderIdEntry = async (orderId: string) => {
+    if (!orderId.trim()) return;
+    await loadScannedOrder(orderId.trim());
+    stopQRScanner();
   };
 
   // Fetch services for autocomplete/dropdown
@@ -1875,38 +2242,57 @@ const BackOfficePage: React.FC<{
   const saveOrderChanges = async () => {
     if (!editingOrder) return;
 
-    // Recalculate totals
-    let newTotal = orderItems.filter(i => i.id !== 'repair_charge').reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    try {
+      // Calculate new total using correct field names
+      let newTotal = orderItems.reduce((sum, item) => {
+        const price = item.unit_price || item.price || 0;
+        const qty = item.quantity || 1;
+        return sum + (price * qty);
+      }, 0);
 
-    // Add repair charge
-    if (repairCharge > 0) {
-      const repairItem = { id: 'repair_charge', name: 'Repair / Misc Charge', price: parseFloat(repairCharge.toString()), quantity: 1, type: 'surcharge' };
-      // Remove old repair item if exists and add new one
-      const cleanItems = orderItems.filter(i => i.id !== 'repair_charge');
-      cleanItems.push(repairItem);
-      setOrderItems(cleanItems); // Just for state sync, strictly we use cleanItems below
-      newTotal += parseFloat(repairCharge.toString());
-    }
+      // Add repair charge to total
+      newTotal += repairCharge;
 
-    // Update DB
-    const { error } = await supabase.from('cp_orders').update({
-      items: orderItems, // Note: State update above might not be immediate if we used setOrderItems(cleanItems), so careful. 
-      // Let's explicitly construct the save payload.
-      total_amount: newTotal,
-      status: 'pending' // If it was a generic valet order, it might now be a real order.
-    }).eq('id', editingOrder.id);
+      // Delete existing order items
+      await supabase.from('cp_order_items').delete().eq('order_id', editingOrder.id);
 
-    if (error) {
-      alert('Failed to update order');
-    } else {
-      alert('Order updated. Total: £' + newTotal.toFixed(2));
-      setIsEditOrderOpen(false);
-      fetchOrders(); // Refresh list
-
-      // Trigger Invoice?
-      if (repairCharge > 0 || newTotal > 0) {
-        // In a real app, generateInvoice(editingOrder.id) here
+      // Build items list including repair charge if present
+      const allItems = [...orderItems];
+      if (repairCharge > 0) {
+        allItems.push({
+          item_name: 'Repair Charge',
+          quantity: 1,
+          unit_price: repairCharge
+        });
       }
+
+      // Insert updated order items
+      if (allItems.length > 0) {
+        const itemRows = allItems.map(item => ({
+          order_id: editingOrder.id,
+          item_name: item.item_name || item.name || item.service_name || 'Item',
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price || item.price || 0,
+          tenant_id: tenant.id
+        }));
+        await supabase.from('cp_order_items').insert(itemRows);
+      }
+
+      // Update order total
+      const { error } = await supabase.from('cp_orders').update({
+        total_amount: newTotal
+      }).eq('id', editingOrder.id);
+
+      if (error) {
+        showFancyAlert('error', 'Update Failed', 'Failed to update order: ' + error.message);
+      } else {
+        showFancyAlert('success', 'Order Updated', `Order total is now £${newTotal.toFixed(2)}`);
+        setIsEditOrderOpen(false);
+        setEditingOrder(null);
+        fetchOrders();
+      }
+    } catch (err: any) {
+      showFancyAlert('error', 'Error', 'Failed to save changes: ' + err.message);
     }
   };
 
@@ -1933,6 +2319,7 @@ const BackOfficePage: React.FC<{
   const [customerFilter, setCustomerFilter] = useState({ name: '', phone: '', postcode: '' });
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [settings, setSettings] = useState<any>({});
+  const [printerSettings, setPrinterSettings] = useState<any>({ printerName: '', defaultTagCount: 1, availablePrinters: [] });
   const [tenantForm, setTenantForm] = useState(tenant);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [bogoForm, setBogoForm] = useState<any>({ type: 'bogo', active: true, buy_qty: 3, get_qty: 1, included_items: [] });
@@ -2230,12 +2617,22 @@ const BackOfficePage: React.FC<{
   const updateCustomerField = async (id: string, field: string, value: any) => {
     const { error } = await supabase.from('cp_customers').update({ [field]: value }).eq('id', id).eq('tenant_id', tenant.id);
     if (!error) fetchCustomers();
-    else alert('Failed to update: ' + error.message);
+    else showFancyAlert('error', 'Update Failed', 'Failed to update: ' + error.message);
   };
 
-  const processRecurringOrders = async () => {
-    if (!confirm('This will scan for subscriptions due this week and create "Pending" orders for them. Proceed?')) return;
+  const processRecurringOrders = () => {
+    showFancyConfirm({
+      title: 'Process Recurring Orders',
+      message: 'This will scan for subscriptions due this week and create "Pending" orders for them. Proceed?',
+      icon: 'info',
+      confirmText: 'Process',
+      cancelText: 'Cancel',
+      onConfirm: executeProcessRecurring
+    });
+  };
 
+  const executeProcessRecurring = async () => {
+    setFancyConfirm(prev => ({ ...prev, show: false }));
     try {
       // 1. Get all orders with recurring flag set
       // Note: For a real app, we should have a 'subscriptions' table. 
@@ -2287,7 +2684,8 @@ const BackOfficePage: React.FC<{
             .single();
 
           if (!existing) {
-            const newOrder = {
+            const newOrder: any = {
+              customer_id: customer.id,
               customer_name: customer.name,
               customer_email: customer.email,
               customer_phone: customer.phone,
@@ -2310,11 +2708,11 @@ const BackOfficePage: React.FC<{
         }
       }
 
-      alert(`Recurring process complete. Created ${createdCount} new orders.`);
+      showFancyAlert('success', 'Process Complete', `Created ${createdCount} new recurring orders.`);
       fetchOrders();
 
     } catch (e: any) {
-      alert('Error processing recurring: ' + e.message);
+      showFancyAlert('error', 'Error', 'Error processing recurring: ' + e.message);
     }
   };
 
@@ -2612,9 +3010,9 @@ const BackOfficePage: React.FC<{
         setDrivers(drivers.map(d => d.id === editingDriver.id ? { ...editingDriver, ...driverData } : d));
         setEditingDriver(null);
         setDriverForm({ name: '', email: '', phone: '', vehicle_reg: '', password_hash: '', working_days: [] });
-        alert('Driver updated successfully!');
+        showFancyAlert('success', 'Driver Updated', 'Driver details have been updated successfully.');
       } else {
-        alert('Error updating driver: ' + error.message);
+        showFancyAlert('error', 'Error', 'Error updating driver: ' + error.message);
       }
     } else {
       if (!driverForm.password_hash) {
@@ -2632,18 +3030,27 @@ const BackOfficePage: React.FC<{
       if (!error && data) {
         setDrivers([...drivers, data[0]]);
         setDriverForm({ name: '', email: '', phone: '', vehicle_reg: '', password_hash: '', working_days: [] });
-        alert('Driver added successfully!');
+        showFancyAlert('success', 'Driver Added', 'New driver has been added successfully.');
       } else {
-        alert('Error: ' + (error?.message || 'Failed to add driver'));
+        showFancyAlert('error', 'Error', 'Error: ' + (error?.message || 'Failed to add driver'));
       }
     }
   };
 
-  const deleteDriver = async (id: string) => {
-    if (confirm('Are you sure you want to delete this driver?')) {
-      await supabase.from('cp_drivers').delete().eq('id', id).eq('tenant_id', tenant.id);
-      setDrivers(drivers.filter(d => d.id !== id));
-    }
+  const deleteDriver = (id: string) => {
+    showFancyConfirm({
+      title: 'Delete Driver',
+      message: 'Are you sure you want to delete this driver? This action cannot be undone.',
+      icon: 'danger',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setFancyConfirm(prev => ({ ...prev, show: false }));
+        await supabase.from('cp_drivers').delete().eq('id', id).eq('tenant_id', tenant.id);
+        setDrivers(drivers.filter(d => d.id !== id));
+        showFancyAlert('success', 'Deleted', 'Driver has been deleted successfully.');
+      }
+    });
   };
 
   const toggleDriverDay = (day: string) => {
@@ -2672,6 +3079,40 @@ const BackOfficePage: React.FC<{
   const addSlotToDay = async (day: string) => { const time = newSlotTimes[day]; if (!time) return; const { data, error } = await supabase.from('cp_time_slots').insert([{ day, label: time, active: true, tenant_id: tenant.id }]).select(); if (error) { alert('Failed to add slot: ' + error.message); } else if (data) { setAvailableSlots([...availableSlots, data[0] as TimeSlot]); setNewSlotTimes({ ...newSlotTimes, [day]: '' }); } };
   const deleteSlot = async (id: string) => { await supabase.from('cp_time_slots').delete().eq('id', id).eq('tenant_id', tenant.id); setAvailableSlots(availableSlots.filter(s => s.id !== id)); };
   const updateOrderStatus = async (orderId: string, status: string) => { await supabase.from('cp_orders').update({ status }).eq('id', orderId); fetchOrders(); };
+
+  const openCollectionFailedModal = (orderId: string) => {
+    setCollectionFailedOrderId(orderId);
+    setCollectionFailedReason('');
+    setShowCollectionFailedModal(true);
+  };
+
+  const handleCollectionFailed = async () => {
+    if (!collectionFailedOrderId || !collectionFailedReason.trim()) {
+      alert('Please provide a reason for the failed collection.');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('cp_orders')
+      .update({
+        status: 'collection_failed',
+        collection_status: 'collection_failed',
+        collection_failed_reason: collectionFailedReason.trim(),
+        collection_failed_at: new Date().toISOString()
+      })
+      .eq('id', collectionFailedOrderId);
+
+    if (!error) {
+      alert('Collection marked as failed. The order has been flagged for follow-up.');
+      setShowCollectionFailedModal(false);
+      setCollectionFailedOrderId(null);
+      setCollectionFailedReason('');
+      fetchOrders();
+    } else {
+      alert('Error updating order: ' + error.message);
+    }
+  };
+
   const updateOrderDriver = async (orderId: string, driverId: string) => {
     await supabase.from('cp_orders').update({
       driver_id: driverId,
@@ -2774,13 +3215,68 @@ const BackOfficePage: React.FC<{
       toEmail: testEmailRecipient,
       toName: 'Test Recipient',
       subject: `[TEST] ${selectedTemplate.subject}`,
-      textContent: selectedTemplate.body
+      textContent: selectedTemplate.body,
+      senderName: tenant?.name
     });
     if (result.success) {
       alert("Test email sent successfully!");
     } else {
       alert("Failed to send test email. Check console for details.");
     }
+  };
+  const [isSendingCampaign, setIsSendingCampaign] = useState(false);
+  const [celebrationPopup, setCelebrationPopup] = useState<{ show: boolean; successCount: number; failCount: number } | null>(null);
+  const [confirmCampaignModal, setConfirmCampaignModal] = useState(false);
+
+  const handleSendCampaignClick = () => {
+    if (!selectedTemplate) return;
+    if (marketingSegment.length === 0) {
+      alert("No customers in the selected segment. Please select a different segment.");
+      return;
+    }
+    setConfirmCampaignModal(true);
+  };
+
+  const handleSendCampaign = async () => {
+    setConfirmCampaignModal(false);
+    if (!selectedTemplate) return;
+
+    setIsSendingCampaign(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const customer of marketingSegment) {
+      if (!customer.email) {
+        failCount++;
+        continue;
+      }
+      // Replace template variables
+      let subject = selectedTemplate.subject
+        .replace(/\{\{customer_name\}\}/g, customer.name || 'Valued Customer')
+        .replace(/\{\{store_name\}\}/g, tenant?.name || 'Our Store');
+      let body = selectedTemplate.body
+        .replace(/\{\{customer_name\}\}/g, customer.name || 'Valued Customer')
+        .replace(/\{\{store_name\}\}/g, tenant?.name || 'Our Store');
+
+      const result = await sendBrevoEmail({
+        toEmail: customer.email,
+        toName: customer.name || 'Customer',
+        subject: subject,
+        textContent: body,
+        senderName: tenant?.name
+      });
+
+      if (result.success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+      // Small delay to avoid rate limiting
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    setIsSendingCampaign(false);
+    setCelebrationPopup({ show: true, successCount, failCount });
   };
   const selectedTemplate = emailTemplates.find(t => t.id === selectedTemplateId);
   const filteredCustomers = customers.filter(c => (c.name || '').toLowerCase().includes(customerFilter.name.toLowerCase()) && (c.phone || '').includes(customerFilter.phone) && (c.address || '').toLowerCase().includes(customerFilter.postcode.toLowerCase()));
@@ -3147,6 +3643,218 @@ const BackOfficePage: React.FC<{
             </div>
           </div>
 
+          {/* Print Settings Section */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center gap-2"><Printer size={20} className="text-pink-600" /> Label Printer Settings</h3>
+              {(window as any).electronPrint && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const printers = await (window as any).electronPrint.getPrinters();
+                      setPrinterSettings((prev: any) => ({ ...prev, availablePrinters: printers }));
+                      alert('Found ' + printers.length + ' printers:\n' + printers.map((p: any) => p.name).join('\n'));
+                    } catch (e: any) {
+                      alert('Error getting printers: ' + e.message);
+                    }
+                  }}
+                  className="text-xs bg-pink-100 text-pink-700 px-3 py-1 rounded-full font-bold hover:bg-pink-200"
+                >
+                  Detect Printers
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Default Number of Tags</label>
+                <p className="text-xs text-gray-500 mb-2">How many tags to print by default when clicking the Tag button</p>
+                <select
+                  className="w-full border rounded p-2"
+                  value={settings.default_tag_count || 1}
+                  onChange={e => setSettings({ ...settings, default_tag_count: parseInt(e.target.value) })}
+                >
+                  <option value={1}>1 tag</option>
+                  <option value={2}>2 tags</option>
+                  <option value={3}>3 tags</option>
+                  <option value={4}>4 tags</option>
+                  <option value={5}>5 tags</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Printer Status</label>
+                <p className="text-xs text-gray-500 mb-2">Current label printer configuration</p>
+                <div className="p-3 bg-gray-50 rounded-lg border">
+                  {(window as any).electronPrint ? (
+                    <div className="flex items-center gap-2 text-green-600">
+                      <CheckCircle size={16} />
+                      <span className="font-bold text-sm">Desktop App Mode</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-orange-600">
+                      <Info size={16} />
+                      <span className="font-bold text-sm">Browser Mode - Uses Print Dialog</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Printer Selection for Electron */}
+              {(window as any).electronPrint && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Select Printer</label>
+                  <p className="text-xs text-gray-500 mb-2">Choose a printer for label tags (click "Detect Printers" first)</p>
+                  <div className="flex gap-2">
+                    <select
+                      className="flex-1 border rounded p-2"
+                      value={printerSettings.printerName || ''}
+                      onChange={async (e) => {
+                        const name = e.target.value;
+                        setPrinterSettings((prev: any) => ({ ...prev, printerName: name }));
+                        if (name && (window as any).electronPrint) {
+                          await (window as any).electronPrint.setPrinter(name);
+                          alert('Printer set to: ' + name);
+                        }
+                      }}
+                    >
+                      <option value="">-- Select a printer --</option>
+                      {printerSettings.availablePrinters?.map((p: any) => (
+                        <option key={p.name} value={p.name}>{p.name} {p.isDefault ? '(Default)' : ''}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={async () => {
+                        if ((window as any).electronPrint) {
+                          const result = await (window as any).electronPrint.printTag({
+                            ticketNumber: 'TEST',
+                            customerName: 'Test Print',
+                            customerPhone: '01onal 2345',
+                            itemCount: 1,
+                            items: '1x Test Item',
+                            itemsSummary: '1x Test Item',
+                            dueDate: new Date().toLocaleDateString('en-GB'),
+                            notes: 'This is a test print',
+                            orderId: 'test-' + Date.now(),
+                            qrData: 'TEST-PRINT'
+                          });
+                          if (result.success) {
+                            alert('Test tag sent to printer!');
+                          } else {
+                            alert('Print failed: ' + (result.error || 'Unknown error'));
+                          }
+                        }
+                      }}
+                      className="bg-pink-600 text-white px-4 py-2 rounded font-bold hover:bg-pink-700"
+                    >
+                      Test Print
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="md:col-span-2">
+                <div className="p-4 bg-pink-50 border border-pink-200 rounded-xl">
+                  <h4 className="font-bold text-sm text-pink-700 mb-2 flex items-center gap-2"><Info size={14} /> How to Print Tags</h4>
+                  <ul className="text-xs text-pink-800 space-y-1 list-disc list-inside">
+                    <li>In the Orders tab, find the <strong>Tag</strong> button (pink printer icon) in the Actions column</li>
+                    <li>Click it and enter the number of tags to print</li>
+                    <li><strong>Desktop app:</strong> Click "Detect Printers" above, select your printer, then use "Test Print" to verify</li>
+                    <li><strong>Browser:</strong> A print preview window will open - select your printer in the dialog</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Desktop App Settings - Only visible in Electron */}
+          {(window as any).electronApp && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                  Desktop App Settings
+                </h3>
+                <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full font-bold">Posso One Suite</span>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Add to Home Screen / Desktop Shortcut */}
+                <div className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-indigo-100 rounded-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-gray-800">Add to Desktop</h4>
+                      <p className="text-xs text-gray-500 mb-3">Create a shortcut on your desktop for quick access</p>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const result = await (window as any).electronApp.createDesktopShortcut();
+                            if (result?.success !== false) {
+                              alert('Desktop shortcut created successfully!');
+                            } else {
+                              alert('Failed to create shortcut: ' + (result?.error || 'Unknown error'));
+                            }
+                          } catch (e: any) {
+                            alert('Error: ' + e.message);
+                          }
+                        }}
+                        className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-indigo-700 transition flex items-center gap-2"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Add Shortcut
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Start on Windows Login */}
+                <div className="p-4 bg-gradient-to-br from-cyan-50 to-blue-50 rounded-xl border border-cyan-100">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-cyan-100 rounded-lg">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-cyan-600"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-bold text-gray-800">Start on Login</h4>
+                      <p className="text-xs text-gray-500 mb-3">Launch CleanPos automatically when Windows starts</p>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const current = await (window as any).electronApp.getStartup();
+                            const newState = !current.enabled;
+                            await (window as any).electronApp.setStartup(newState);
+                            alert(newState ? 'CleanPos will now start automatically with Windows!' : 'Automatic startup disabled.');
+                          } catch (e: any) {
+                            alert('Error: ' + e.message);
+                          }
+                        }}
+                        className="bg-cyan-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-cyan-700 transition flex items-center gap-2"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        Toggle Startup
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* App Info */}
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-cyan-500 rounded-xl flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 4.5C11.17 4.5 10.5 5.17 10.5 6C10.5 6.41 10.67 6.77 10.94 7.03L4.13 12.19C3.43 12.72 3 13.53 3 14.41C3 15.84 4.16 17 5.59 17H18.41C19.84 17 21 15.84 21 14.41C21 13.53 20.57 12.72 19.87 12.19L13.06 7.03C13.33 6.77 13.5 6.41 13.5 6C13.5 5.17 12.83 4.5 12 4.5Z"/><path d="M6 19H18V20H6V19Z"/></svg>
+                  </div>
+                  <div>
+                    <span className="font-bold text-gray-800">CleanPos</span>
+                    <span className="text-gray-400 mx-2">•</span>
+                    <span className="text-xs text-gray-500">Posso One Suite</span>
+                  </div>
+                </div>
+                <div className="text-xs text-gray-400">v1.0.0</div>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 
@@ -3159,6 +3867,7 @@ const BackOfficePage: React.FC<{
               {fetchError && <p className="text-xs text-red-500 font-bold">Error: {fetchError}</p>}
             </div>
             <div className="flex gap-2">
+              <button onClick={startQRScanner} className="text-xs text-pink-700 hover:text-pink-900 bg-pink-50 hover:bg-pink-100 border border-pink-200 px-3 py-1 rounded-full font-bold flex items-center gap-1"><Search size={12} /> Scan Tag</button>
               <button onClick={processRecurringOrders} className="text-xs text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1 rounded-full font-bold flex items-center gap-1"><RefreshCw size={12} /> Process Recurring</button>
               <button onClick={fetchOrders} className="text-xs text-trust-blue hover:underline bg-blue-50 px-3 py-1 rounded-full font-bold">Refresh Orders</button>
             </div>
@@ -3190,20 +3899,24 @@ const BackOfficePage: React.FC<{
                           order.status === 'ready_for_delivery' ? 'bg-orange-100 text-orange-700' :
                             order.status === 'cleaning' ? 'bg-purple-100 text-purple-700' :
                               order.status === 'collected' ? 'bg-indigo-100 text-indigo-700' :
-                                order.status === 'collecting' ? 'bg-blue-100 text-blue-700' :
-                                  order.status === 'dispatched' ? 'bg-blue-100 text-blue-700' :
-                                    order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                      'bg-gray-100 text-gray-700'
+                                order.status === 'collection_failed' ? 'bg-red-100 text-red-700' :
+                                  order.status === 'collecting' ? 'bg-blue-100 text-blue-700' :
+                                    order.status === 'dispatched' ? 'bg-blue-100 text-blue-700' :
+                                      order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                                        'bg-gray-100 text-gray-700'
                       }`}>{order.status.replace(/_/g, ' ')}</span></td>
                     <td className="px-4 py-4"><select className="text-xs border border-gray-200 rounded p-1 bg-white focus:border-trust-blue outline-none" value={order.driver_id || ''} onChange={(e) => updateOrderDriver(order.id, e.target.value)}><option value="">-- Assign --</option>{drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}</select></td>
                     <td className="px-4 py-4">
-                      <div className="flex gap-1.5 flex-wrap max-w-md">
+                      <div className="flex gap-1.5 flex-wrap max-w-2xl">
                         {/* Dispatch for Collection */}
                         <button onClick={() => updateOrderStatus(order.id, 'dispatched')} title="Dispatch for Collection" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'dispatched' ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Truck size={14} /><span className="text-[8px] font-bold mt-0.5">Dispatch</span></button>
                         <button onClick={() => openEditOrder(order)} title="Edit Items / Add Repair" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:bg-orange-50"><Edit3 size={14} /><span className="text-[8px] font-bold mt-0.5">Edit</span></button>
 
                         {/* Collecting */}
                         <button onClick={() => updateOrderStatus(order.id, 'collecting')} title="Collecting" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collecting' ? 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Package size={14} /><span className="text-[8px] font-bold mt-0.5">Collect</span></button>
+
+                        {/* Collection Failed */}
+                        <button onClick={() => openCollectionFailedModal(order.id)} title="Collection Failed - Customer/Order Not Ready" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collection_failed' ? 'bg-red-600 text-white border-red-700 ring-2 ring-red-200' : 'bg-white text-gray-600 border-gray-200 hover:border-red-400 hover:bg-red-50'}`}><XCircle size={14} /><span className="text-[8px] font-bold mt-0.5">Failed</span></button>
 
                         {/* Collected */}
                         <button onClick={() => updateOrderStatus(order.id, 'collected')} title="Collected" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collected' ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'}`}><Check size={14} /><span className="text-[8px] font-bold mt-0.5">Collected</span></button>
@@ -3222,6 +3935,13 @@ const BackOfficePage: React.FC<{
 
                         {/* Completed */}
                         <button onClick={() => updateOrderStatus(order.id, 'completed')} title="Mark as Completed" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'completed' ? 'bg-green-600 text-white border-green-700 ring-2 ring-green-200' : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:bg-green-50'}`}><CheckCircle2 size={14} /><span className="text-[8px] font-bold mt-0.5">Complete</span></button>
+
+                        {/* Print Tag */}
+                        <button onClick={() => {
+                          setPrintTagOrder(order);
+                          setPrintTagCount(settings.default_tag_count || 1);
+                          setShowPrintTagModal(true);
+                        }} title="Print Tag for Label Printer" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-pink-400 hover:bg-pink-50"><Printer size={14} /><span className="text-[8px] font-bold mt-0.5">Tag</span></button>
                       </div>
                     </td>
                   </tr>
@@ -4176,8 +4896,13 @@ const BackOfficePage: React.FC<{
                         />
                       </div>
                       {selectedTemplate.type === 'marketing' && (
-                        <button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm shrink-0 mt-6">
-                          <Send size={16} /> Send Campaign
+                        <button
+                          onClick={handleSendCampaignClick}
+                          disabled={isSendingCampaign || marketingSegment.length === 0}
+                          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm shrink-0 mt-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isSendingCampaign ? <Loader2 className="animate-spin" size={16} /> : <Send size={16} />}
+                          {isSendingCampaign ? `Sending...` : `Send Campaign (${marketingSegment.length})`}
                         </button>
                       )}
                     </div>
@@ -4832,14 +5557,62 @@ const BackOfficePage: React.FC<{
               </div>
             </div>
 
-            {/* NEW: Stripe Connect Section */}
+            {/* Billing Type Selection */}
+            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 md:col-span-2">
+              <h3 className="font-bold text-lg mb-4">Choose Your Billing Model</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button
+                  onClick={async () => {
+                    await supabase.from('tenants').update({ billing_type: 'subscription' }).eq('id', tenant.id);
+                    onTenantUpdate({ ...tenant, billing_type: 'subscription' });
+                  }}
+                  className={`p-6 rounded-xl border-2 text-left transition ${tenant?.billing_type !== 'per_transaction' ? 'border-trust-blue bg-trust-blue/5' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${tenant?.billing_type !== 'per_transaction' ? 'border-trust-blue' : 'border-gray-300'}`}>
+                      {tenant?.billing_type !== 'per_transaction' && <div className="w-2.5 h-2.5 rounded-full bg-trust-blue" />}
+                    </div>
+                    <span className="font-bold text-lg">Monthly Subscription</span>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Pay £65/month for unlimited orders</p>
+                  <ul className="text-xs text-gray-500 space-y-1">
+                    <li>✓ No per-transaction fees</li>
+                    <li>✓ Customers can pay in store or on delivery</li>
+                    <li>✓ Card payments optional</li>
+                  </ul>
+                </button>
+                <button
+                  onClick={async () => {
+                    await supabase.from('tenants').update({ billing_type: 'per_transaction' }).eq('id', tenant.id);
+                    onTenantUpdate({ ...tenant, billing_type: 'per_transaction' });
+                  }}
+                  className={`p-6 rounded-xl border-2 text-left transition ${tenant?.billing_type === 'per_transaction' ? 'border-trust-blue bg-trust-blue/5' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${tenant?.billing_type === 'per_transaction' ? 'border-trust-blue' : 'border-gray-300'}`}>
+                      {tenant?.billing_type === 'per_transaction' && <div className="w-2.5 h-2.5 rounded-full bg-trust-blue" />}
+                    </div>
+                    <span className="font-bold text-lg">Pay Per Transaction</span>
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">No monthly fee - pay only when you process orders</p>
+                  <ul className="text-xs text-gray-500 space-y-1">
+                    <li>✓ £1.20 per order (+ Stripe fees)</li>
+                    <li>✓ Customers must pay by card at checkout</li>
+                    <li>✓ Requires Stripe Connect setup below</li>
+                  </ul>
+                </button>
+              </div>
+            </div>
+
+            {/* Stripe Connect Section - Only show if per_transaction billing */}
+            {tenant?.billing_type === 'per_transaction' && (
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 md:col-span-2">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="font-bold text-lg flex items-center gap-2">
                     <ShieldCheck className="text-trust-blue" /> Payments & Stripe Connect
                   </h3>
-                  <p className="text-sm text-gray-500">Connect your Stripe account to process customer payments and take a platform commission.</p>
+                  <p className="text-sm text-gray-500">Connect your Stripe account to process customer payments.</p>
                 </div>
                 <div className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${companySettings?.stripe_connect_account_id ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                   {companySettings?.stripe_connect_account_id ? 'Connected' : 'Not Connected'}
@@ -4853,7 +5626,7 @@ const BackOfficePage: React.FC<{
                   </div>
                   <h4 className="font-bold text-xl mb-2">Accept Online Payments</h4>
                   <p className="text-gray-600 mb-6 max-w-md mx-auto">
-                    Link your Stripe account to start accepting credit card payments directly from your customer portal. We take a flat platform fee of £1.00 per transaction.
+                    Link your Stripe account to start accepting credit card payments directly from your customer portal. We take a flat platform fee of £1.20 per transaction (plus standard Stripe fees of 1.4% + 20p).
                   </p>
                   <button
                     onClick={handleConnectStripe}
@@ -4872,7 +5645,8 @@ const BackOfficePage: React.FC<{
                   </div>
                   <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
                     <p className="text-xs font-bold text-gray-400 uppercase mb-1">Platform Fee</p>
-                    <p className="font-bold text-lg">£1.00 / order</p>
+                    <p className="font-bold text-lg">£1.20 / order</p>
+                    <p className="text-xs text-gray-500">+ Stripe fees (1.4% + 20p)</p>
                   </div>
                   <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center justify-center">
                     <button className="text-sm font-bold text-trust-blue hover:underline">Stripe Dashboard ↗</button>
@@ -4880,6 +5654,7 @@ const BackOfficePage: React.FC<{
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       )
@@ -5634,6 +6409,926 @@ const BackOfficePage: React.FC<{
           </div>
         )
       }
+
+      {/* Campaign Confirmation Modal */}
+      {confirmCampaignModal && selectedTemplate && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full mx-4 transform animate-bounce-in">
+            {/* Header with icon */}
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                <Send className="text-white" size={28} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-gray-800">Ready to Launch?</h3>
+                <p className="text-sm text-gray-500">Your campaign is about to go live!</p>
+              </div>
+            </div>
+
+            {/* Campaign details */}
+            <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 mb-4 border border-purple-100">
+              <div className="flex items-center gap-2 mb-2">
+                <Mail size={16} className="text-purple-600" />
+                <span className="font-bold text-purple-800">{selectedTemplate.name}</span>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-1">
+                  <Users size={14} className="text-pink-600" />
+                  <span className="font-bold text-pink-700">{marketingSegment.length}</span>
+                  <span className="text-gray-600">recipients</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Warning/Info message */}
+            <div className="flex items-start gap-2 text-sm text-gray-600 mb-6 bg-amber-50 rounded-lg p-3 border border-amber-200">
+              <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+              <span>Emails will be sent immediately. Make sure your template is ready!</span>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmCampaignModal(false)}
+                className="flex-1 px-4 py-3 rounded-xl font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendCampaign}
+                className="flex-1 px-4 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2"
+              >
+                <Rocket size={18} />
+                Send Now!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Celebration Popup for Marketing Campaign Success */}
+      {celebrationPopup?.show && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[9999] animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full mx-4 text-center transform animate-bounce-in relative overflow-hidden">
+            {/* Confetti/sparkle background effect */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+              <div className="absolute -top-4 -left-4 w-24 h-24 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full opacity-20 blur-xl animate-pulse"></div>
+              <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full opacity-20 blur-xl animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+              <div className="absolute top-1/2 left-1/4 w-16 h-16 bg-gradient-to-br from-blue-400 to-cyan-400 rounded-full opacity-15 blur-lg animate-pulse" style={{ animationDelay: '1s' }}></div>
+            </div>
+
+            {/* Trophy/Star Icon */}
+            <div className="relative mb-6">
+              <div className="w-24 h-24 bg-gradient-to-br from-yellow-400 via-orange-500 to-red-500 rounded-full mx-auto flex items-center justify-center shadow-lg animate-pulse">
+                <span className="text-5xl">&#127942;</span>
+              </div>
+              <div className="absolute -top-2 -right-8 text-3xl animate-bounce" style={{ animationDelay: '0.2s' }}>&#10024;</div>
+              <div className="absolute -top-1 -left-6 text-2xl animate-bounce" style={{ animationDelay: '0.4s' }}>&#11088;</div>
+              <div className="absolute -bottom-2 right-4 text-2xl animate-bounce" style={{ animationDelay: '0.6s' }}>&#127775;</div>
+            </div>
+
+            {/* Main Message */}
+            <h2 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 mb-2 relative">
+              You're a Marketing GURU!
+            </h2>
+            <p className="text-xl font-bold text-gray-700 mb-4">That was Genius Marketing!</p>
+
+            {/* Stats */}
+            <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 mb-6 border border-green-200">
+              <div className="flex justify-center gap-8">
+                <div className="text-center">
+                  <div className="text-4xl font-black text-green-600">{celebrationPopup.successCount}</div>
+                  <div className="text-sm font-bold text-green-700 uppercase tracking-wide">Sent</div>
+                </div>
+                {celebrationPopup.failCount > 0 && (
+                  <div className="text-center">
+                    <div className="text-4xl font-black text-orange-500">{celebrationPopup.failCount}</div>
+                    <div className="text-sm font-bold text-orange-600 uppercase tracking-wide">Skipped</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Motivational subtext */}
+            <p className="text-gray-500 text-sm mb-6">
+              {celebrationPopup.successCount > 10
+                ? "Wow! That's some serious reach! Your customers are going to love this!"
+                : celebrationPopup.successCount > 5
+                  ? "Great work! Your marketing game is on point!"
+                  : "Every email counts! Keep building those relationships!"}
+            </p>
+
+            {/* Close button */}
+            <button
+              onClick={() => setCelebrationPopup(null)}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-bold py-3 px-8 rounded-full text-lg shadow-lg transform hover:scale-105 transition-all duration-200"
+            >
+              Awesome!
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* QR Scanner Modal */}
+      {showQRScanner && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+            <button onClick={stopQRScanner} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+              <X size={24} />
+            </button>
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+              <Search className="text-pink-600" size={24} />
+              Scan Order Tag
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">Point your camera at the QR code on the tag</p>
+
+            <div className="relative bg-black rounded-xl overflow-hidden mb-4" style={{ aspectRatio: '4/3' }}>
+              <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+              <canvas ref={canvasRef} className="hidden" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-48 h-48 border-4 border-pink-500 rounded-2xl opacity-50"></div>
+              </div>
+            </div>
+
+            <div className="text-center text-sm text-gray-500 mb-4">— or enter order ID manually —</div>
+
+            <button
+              onClick={() => { setShowTouchKeypad(true); setTouchKeypadValue(''); }}
+              className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-pink-700 hover:to-purple-700 flex items-center justify-center gap-3"
+            >
+              <Hash size={24} />
+              Enter Tag Code
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Touch Keypad Modal for Tag Entry */}
+      {showTouchKeypad && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="bg-gradient-to-r from-pink-600 to-purple-600 text-white p-4 rounded-t-2xl flex justify-between items-center">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <Hash size={24} />
+                Enter Tag Code
+              </h3>
+              <button onClick={() => setShowTouchKeypad(false)} className="text-white/80 hover:text-white">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-4">
+              {/* Display */}
+              <div className="bg-gray-100 dark:bg-gray-800 rounded-xl p-4 mb-4 min-h-[60px] flex items-center justify-center">
+                <span className="text-3xl font-mono font-bold tracking-widest text-gray-800 dark:text-white">
+                  {touchKeypadValue || '—'}
+                </span>
+              </div>
+
+              {/* Alphanumeric Keypad */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                {['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'].map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => setTouchKeypadValue(prev => prev + key)}
+                    className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-2xl font-bold py-4 rounded-xl transition-colors"
+                  >
+                    {key}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setTouchKeypadValue(prev => prev.slice(0, -1))}
+                  className="bg-orange-100 dark:bg-orange-900 hover:bg-orange-200 dark:hover:bg-orange-800 text-orange-600 dark:text-orange-300 text-xl font-bold py-4 rounded-xl transition-colors flex items-center justify-center"
+                >
+                  <Delete size={28} />
+                </button>
+              </div>
+
+              {/* Letter Row for Order IDs like ABC123 */}
+              <div className="grid grid-cols-6 gap-1 mb-4">
+                {['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map((key) => (
+                  <button
+                    key={key}
+                    onClick={() => setTouchKeypadValue(prev => prev + key)}
+                    className="bg-blue-100 dark:bg-blue-900 hover:bg-blue-200 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300 text-lg font-bold py-3 rounded-lg transition-colors"
+                  >
+                    {key}
+                  </button>
+                ))}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setTouchKeypadValue(''); }}
+                  className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200 py-4 rounded-xl font-bold text-lg hover:bg-gray-400 dark:hover:bg-gray-500"
+                >
+                  Clear
+                </button>
+                <button
+                  onClick={() => {
+                    if (touchKeypadValue.trim()) {
+                      handleManualOrderIdEntry(touchKeypadValue.trim());
+                      setShowTouchKeypad(false);
+                      setTouchKeypadValue('');
+                    }
+                  }}
+                  className="flex-1 bg-gradient-to-r from-pink-600 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-pink-700 hover:to-purple-700 flex items-center justify-center gap-2"
+                >
+                  <Search size={20} />
+                  Find Order
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scanned Order Modal */}
+      {showScannedOrderModal && scannedOrder && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-pink-600 to-purple-600 text-white p-6">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-2xl font-bold">Order #{scannedOrder.readable_id || scannedOrder.pos_ticket_id || scannedOrder.id?.slice(-6)?.toUpperCase()}</h3>
+                  <p className="text-pink-100 text-sm mt-1">{scannedOrder.customer_name || 'Walk-in Customer'}</p>
+                </div>
+                <button onClick={() => { setShowScannedOrderModal(false); setScannedOrder(null); }} className="text-white/80 hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {/* Customer Info */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Customer</label>
+                  <p className="font-semibold">{scannedOrder.customer_name || 'Walk-in'}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone</label>
+                  <p className="font-semibold">{scannedOrder.customer_phone || '-'}</p>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
+                  <p className="font-semibold">{scannedOrder.customer_address || '-'}</p>
+                </div>
+              </div>
+
+              {/* Order Items */}
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Items</label>
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
+                  {(() => {
+                    let items: any[] = [];
+                    try {
+                      items = typeof scannedOrder.items === 'string' ? JSON.parse(scannedOrder.items) : scannedOrder.items || [];
+                    } catch (e) { items = []; }
+                    return items.length > 0 ? items.map((item: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center py-1 border-b border-gray-200 dark:border-gray-700 last:border-0">
+                        <span className="font-medium">{item.quantity || 1}x {item.item_name || item.name || item.service_name || 'Item'}</span>
+                        <span className="text-gray-600">£{((item.unit_price || item.price || 0) * (item.quantity || 1)).toFixed(2)}</span>
+                      </div>
+                    )) : <p className="text-gray-400">No items</p>;
+                  })()}
+                </div>
+              </div>
+
+              {/* Status & POS Ticket */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Status</label>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase inline-block ${
+                    scannedOrder.status === 'completed' ? 'bg-green-100 text-green-700' :
+                    scannedOrder.status === 'cleaning' ? 'bg-purple-100 text-purple-700' :
+                    scannedOrder.status === 'collected' ? 'bg-indigo-100 text-indigo-700' :
+                    'bg-yellow-100 text-yellow-700'
+                  }`}>{scannedOrder.status?.replace(/_/g, ' ') || 'pending'}</span>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">POS Ticket #</label>
+                  <input
+                    type="text"
+                    className="border rounded px-2 py-1 text-sm w-full"
+                    value={scannedOrder.pos_ticket_id || ''}
+                    onChange={(e) => setScannedOrder({ ...scannedOrder, pos_ticket_id: e.target.value })}
+                    placeholder="Enter ticket ID"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Notes</label>
+                <textarea
+                  className="w-full border rounded-lg p-2 text-sm"
+                  rows={2}
+                  value={scannedOrder.notes || ''}
+                  onChange={(e) => setScannedOrder({ ...scannedOrder, notes: e.target.value })}
+                  placeholder="Add notes..."
+                />
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => { updateOrderStatus(scannedOrder.id, 'collected'); setScannedOrder({ ...scannedOrder, status: 'collected' }); }} className="flex-1 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-bold text-sm hover:bg-indigo-200">Collected</button>
+                <button onClick={() => { updateOrderStatus(scannedOrder.id, 'cleaning'); setScannedOrder({ ...scannedOrder, status: 'cleaning' }); }} className="flex-1 py-2 bg-purple-100 text-purple-700 rounded-lg font-bold text-sm hover:bg-purple-200">Cleaning</button>
+                <button onClick={() => { updateOrderStatus(scannedOrder.id, 'ready_for_delivery'); setScannedOrder({ ...scannedOrder, status: 'ready_for_delivery' }); }} className="flex-1 py-2 bg-orange-100 text-orange-700 rounded-lg font-bold text-sm hover:bg-orange-200">Ready</button>
+                <button onClick={() => { updateOrderStatus(scannedOrder.id, 'completed'); setScannedOrder({ ...scannedOrder, status: 'completed' }); }} className="flex-1 py-2 bg-green-100 text-green-700 rounded-lg font-bold text-sm hover:bg-green-200">Complete</button>
+              </div>
+            </div>
+
+            <div className="border-t p-4 bg-gray-50 dark:bg-gray-800 flex justify-between items-center">
+              <button
+                onClick={() => printOrderTag(scannedOrder)}
+                className="flex items-center gap-2 bg-pink-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-pink-700"
+              >
+                <Printer size={16} /> Print Tag
+              </button>
+              <button
+                onClick={async () => {
+                  await supabase.from('cp_orders').update({
+                    pos_ticket_id: scannedOrder.pos_ticket_id,
+                    notes: scannedOrder.notes
+                  }).eq('id', scannedOrder.id);
+                  setShowScannedOrderModal(false);
+                  setScannedOrder(null);
+                  fetchOrders();
+                }}
+                className="bg-trust-blue text-white px-6 py-2 rounded-lg font-bold hover:bg-trust-blue-hover"
+              >
+                Save & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fancy Print Notification Pop-up */}
+      {printToast.show && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[100] animate-fade-in">
+          <div className={`relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden transform animate-scale-in`}>
+            {/* Animated gradient header */}
+            <div className={`h-2 ${
+              printToast.type === 'success' ? 'bg-gradient-to-r from-green-400 via-emerald-500 to-teal-500' :
+              printToast.type === 'error' ? 'bg-gradient-to-r from-red-400 via-rose-500 to-pink-500' :
+              'bg-gradient-to-r from-yellow-400 via-amber-500 to-orange-500'
+            } animate-gradient-x`} />
+
+            <div className="p-8 text-center">
+              {/* Large animated icon */}
+              <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center animate-bounce-in ${
+                printToast.type === 'success' ? 'bg-gradient-to-br from-green-100 to-emerald-200 dark:from-green-900/30 dark:to-emerald-800/30' :
+                printToast.type === 'error' ? 'bg-gradient-to-br from-red-100 to-rose-200 dark:from-red-900/30 dark:to-rose-800/30' :
+                'bg-gradient-to-br from-yellow-100 to-amber-200 dark:from-yellow-900/30 dark:to-amber-800/30'
+              }`}>
+                {printToast.type === 'success' ? (
+                  <CheckCircle size={40} className="text-green-600 dark:text-green-400" />
+                ) : printToast.type === 'error' ? (
+                  <XCircle size={40} className="text-red-600 dark:text-red-400" />
+                ) : (
+                  <Info size={40} className="text-yellow-600 dark:text-yellow-400" />
+                )}
+              </div>
+
+              {/* Title */}
+              <h3 className={`text-2xl font-bold mb-2 ${
+                printToast.type === 'success' ? 'text-green-700 dark:text-green-400' :
+                printToast.type === 'error' ? 'text-red-700 dark:text-red-400' :
+                'text-yellow-700 dark:text-yellow-400'
+              }`}>
+                {printToast.type === 'success' ? '✨ Print Success!' : printToast.type === 'error' ? '❌ Print Failed' : '⚠️ Warning'}
+              </h3>
+
+              {/* Message */}
+              <p className="text-gray-600 dark:text-gray-300 mb-6">{printToast.message}</p>
+
+              {/* Dismiss button */}
+              <button
+                onClick={() => setPrintToast(prev => ({ ...prev, show: false }))}
+                className={`px-8 py-3 rounded-xl font-semibold text-white transition-all transform hover:scale-105 active:scale-95 shadow-lg ${
+                  printToast.type === 'success' ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' :
+                  printToast.type === 'error' ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700' :
+                  'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700'
+                }`}
+              >
+                Got it
+              </button>
+            </div>
+
+            {/* Decorative elements */}
+            <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full opacity-10 ${
+              printToast.type === 'success' ? 'bg-green-500' :
+              printToast.type === 'error' ? 'bg-red-500' :
+              'bg-yellow-500'
+            }`} />
+            <div className={`absolute -bottom-8 -left-8 w-24 h-24 rounded-full opacity-10 ${
+              printToast.type === 'success' ? 'bg-emerald-500' :
+              printToast.type === 'error' ? 'bg-rose-500' :
+              'bg-amber-500'
+            }`} />
+          </div>
+        </div>
+      )}
+
+      {/* Print Tag Modal */}
+      {showPrintTagModal && printTagOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-sm w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-pink-100 dark:bg-pink-900/20 rounded-full flex items-center justify-center">
+                <Printer size={24} className="text-pink-600 dark:text-pink-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Print Tags</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Order #{printTagOrder.readable_id}</p>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                How many tags to print?
+              </label>
+              <div className="flex items-center gap-4 justify-center">
+                <button
+                  onClick={() => setPrintTagCount(Math.max(1, printTagCount - 1))}
+                  className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-lg font-bold hover:bg-gray-100"
+                >-</button>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={printTagCount}
+                  onChange={(e) => setPrintTagCount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                  className="w-20 text-center text-2xl font-bold border rounded-lg p-2"
+                />
+                <button
+                  onClick={() => setPrintTagCount(Math.min(10, printTagCount + 1))}
+                  className="w-10 h-10 rounded-lg border border-gray-300 flex items-center justify-center text-lg font-bold hover:bg-gray-100"
+                >+</button>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowPrintTagModal(false);
+                  setPrintTagOrder(null);
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  for (let i = 0; i < printTagCount; i++) {
+                    setTimeout(() => printOrderTag(printTagOrder), i * 500);
+                  }
+                  setShowPrintTagModal(false);
+                  setPrintTagOrder(null);
+                }}
+                className="flex-1 px-4 py-2 bg-pink-600 text-white rounded-lg font-bold hover:bg-pink-700 flex items-center justify-center gap-2"
+              >
+                <Printer size={16} /> Print {printTagCount} Tag{printTagCount > 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Order Modal */}
+      {isEditOrderOpen && editingOrder && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
+            <div className="bg-gradient-to-r from-orange-500 to-amber-500 text-white p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold">Edit Order</h3>
+                  <p className="text-orange-100 text-sm">#{editingOrder.readable_id || editingOrder.pos_ticket_id}</p>
+                </div>
+                <button onClick={() => { setIsEditOrderOpen(false); setEditingOrder(null); }} className="text-white/80 hover:text-white">
+                  <X size={24} />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {/* Customer Info */}
+              <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <p className="font-bold">{editingOrder.customer_name || 'Walk-in'}</p>
+                <p className="text-sm text-gray-500">{editingOrder.customer_phone}</p>
+              </div>
+
+              {/* Order Items */}
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Items</label>
+                <div className="space-y-2">
+                  {orderItems.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.quantity || 1}
+                        onChange={(e) => {
+                          const newItems = [...orderItems];
+                          newItems[idx].quantity = parseInt(e.target.value) || 1;
+                          setOrderItems(newItems);
+                        }}
+                        className="w-14 border rounded px-2 py-1 text-center text-sm"
+                      />
+                      <span className="flex-1 font-medium text-sm">{item.item_name || item.name || item.service_name || 'Item'}</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-gray-500 text-sm">£</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unit_price || item.price || 0}
+                          onChange={(e) => {
+                            const newItems = [...orderItems];
+                            const newPrice = parseFloat(e.target.value) || 0;
+                            newItems[idx].unit_price = newPrice;
+                            newItems[idx].price = newPrice;
+                            setOrderItems(newItems);
+                          }}
+                          className="w-20 border rounded px-2 py-1 text-right text-sm"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setOrderItems(orderItems.filter((_, i) => i !== idx))}
+                        className="text-red-500 hover:text-red-700 p-1"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  {orderItems.length === 0 && (
+                    <p className="text-gray-400 text-sm">No items</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Add Item / Add Surcharge */}
+              <div className="mb-4 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Add Service</label>
+                  <select
+                    onChange={(e) => {
+                      const service = availableServices.find(s => s.id === e.target.value);
+                      if (service) {
+                        setOrderItems([...orderItems, {
+                          id: service.id,
+                          item_name: service.name,
+                          name: service.name,
+                          quantity: 1,
+                          unit_price: service.price,
+                          price: service.price
+                        }]);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="w-full border rounded-lg px-3 py-2 text-sm"
+                    defaultValue=""
+                  >
+                    <option value="">-- Select service --</option>
+                    {availableServices.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} - £{s.price}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Custom Charge</label>
+                  <button
+                    onClick={() => setShowSurchargeModal(true)}
+                    className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:from-purple-600 hover:to-indigo-700 flex items-center justify-center gap-2"
+                  >
+                    <Plus size={16} /> Add Surcharge
+                  </button>
+                </div>
+              </div>
+
+              {/* Repair Charge */}
+              <div className="mb-4">
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Repair Charge (£)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={repairCharge}
+                  onChange={(e) => setRepairCharge(parseFloat(e.target.value) || 0)}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Total */}
+              <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-gray-700 dark:text-gray-300">New Total:</span>
+                  <span className="text-2xl font-bold text-green-600">
+                    £{(orderItems.reduce((sum, item) => sum + ((item.unit_price || item.price || 0) * (item.quantity || 1)), 0) + repairCharge).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t p-4 flex gap-3">
+              <button
+                onClick={() => { setIsEditOrderOpen(false); setEditingOrder(null); }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg font-bold text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  await saveOrderChanges();
+                  setIsEditOrderOpen(false);
+                  setEditingOrder(null);
+                }}
+                className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg font-bold hover:bg-orange-600"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Collection Failed Modal */}
+      {showCollectionFailedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+                <XCircle size={24} className="text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Collection Failed</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Mark collection as unsuccessful</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Reason for failed collection:
+              </label>
+              <select
+                value={collectionFailedReason}
+                onChange={(e) => setCollectionFailedReason(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 mb-2"
+              >
+                <option value="">-- Select reason --</option>
+                <option value="Customer not available">Customer not available</option>
+                <option value="Address not found">Address not found</option>
+                <option value="Order not ready">Order not ready</option>
+                <option value="Customer rescheduled">Customer rescheduled</option>
+                <option value="Access issues">Access issues</option>
+                <option value="Other">Other</option>
+              </select>
+              {collectionFailedReason === 'Other' && (
+                <textarea
+                  placeholder="Please describe the reason..."
+                  className="w-full border rounded-lg px-3 py-2"
+                  rows={2}
+                  onChange={(e) => setCollectionFailedReason(e.target.value)}
+                />
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCollectionFailedModal(false);
+                  setCollectionFailedOrderId(null);
+                  setCollectionFailedReason('');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!collectionFailedOrderId || !collectionFailedReason) {
+                    alert('Please select a reason');
+                    return;
+                  }
+                  await supabase.from('cp_orders').update({
+                    status: 'collection_failed',
+                    collection_failed_reason: collectionFailedReason,
+                    collection_failed_at: new Date().toISOString()
+                  }).eq('id', collectionFailedOrderId);
+                  setShowCollectionFailedModal(false);
+                  setCollectionFailedOrderId(null);
+                  setCollectionFailedReason('');
+                  fetchOrders();
+                }}
+                className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg font-bold hover:bg-red-600"
+              >
+                Mark as Failed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fancy Confirm Modal */}
+      {fancyConfirm.show && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transform animate-scale-in">
+            {/* Header with gradient */}
+            <div className={`h-2 ${
+              fancyConfirm.icon === 'danger' ? 'bg-gradient-to-r from-red-500 to-rose-600' :
+              fancyConfirm.icon === 'warning' ? 'bg-gradient-to-r from-yellow-500 to-amber-600' :
+              fancyConfirm.icon === 'success' ? 'bg-gradient-to-r from-green-500 to-emerald-600' :
+              'bg-gradient-to-r from-blue-500 to-indigo-600'
+            }`} />
+
+            <div className="p-6">
+              {/* Icon */}
+              <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
+                fancyConfirm.icon === 'danger' ? 'bg-red-100 dark:bg-red-900/30' :
+                fancyConfirm.icon === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                fancyConfirm.icon === 'success' ? 'bg-green-100 dark:bg-green-900/30' :
+                'bg-blue-100 dark:bg-blue-900/30'
+              }`}>
+                {fancyConfirm.icon === 'danger' ? (
+                  <AlertCircle size={32} className="text-red-600 dark:text-red-400" />
+                ) : fancyConfirm.icon === 'warning' ? (
+                  <AlertCircle size={32} className="text-yellow-600 dark:text-yellow-400" />
+                ) : fancyConfirm.icon === 'success' ? (
+                  <CheckCircle size={32} className="text-green-600 dark:text-green-400" />
+                ) : (
+                  <Info size={32} className="text-blue-600 dark:text-blue-400" />
+                )}
+              </div>
+
+              {/* Title */}
+              <h3 className="text-xl font-bold text-center text-gray-900 dark:text-white mb-2">
+                {fancyConfirm.title}
+              </h3>
+
+              {/* Message */}
+              <p className="text-center text-gray-600 dark:text-gray-300 mb-6">
+                {fancyConfirm.message}
+              </p>
+
+              {/* Buttons */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setFancyConfirm(prev => ({ ...prev, show: false }))}
+                  className="flex-1 px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
+                >
+                  {fancyConfirm.cancelText || 'Cancel'}
+                </button>
+                <button
+                  onClick={() => fancyConfirm.onConfirm()}
+                  className={`flex-1 px-4 py-3 rounded-xl font-bold text-white transition-all transform hover:scale-105 ${
+                    fancyConfirm.icon === 'danger' ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700' :
+                    fancyConfirm.icon === 'warning' ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700' :
+                    'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
+                  }`}
+                >
+                  {fancyConfirm.confirmText || 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fancy Alert Modal */}
+      {fancyAlert.show && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transform animate-scale-in">
+            {/* Header with gradient */}
+            <div className={`h-2 ${
+              fancyAlert.type === 'error' ? 'bg-gradient-to-r from-red-500 to-rose-600' :
+              fancyAlert.type === 'warning' ? 'bg-gradient-to-r from-yellow-500 to-amber-600' :
+              fancyAlert.type === 'success' ? 'bg-gradient-to-r from-green-500 to-emerald-600' :
+              'bg-gradient-to-r from-blue-500 to-indigo-600'
+            }`} />
+
+            <div className="p-6 text-center">
+              {/* Icon */}
+              <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center animate-bounce-in ${
+                fancyAlert.type === 'error' ? 'bg-gradient-to-br from-red-100 to-rose-200 dark:from-red-900/30 dark:to-rose-800/30' :
+                fancyAlert.type === 'warning' ? 'bg-gradient-to-br from-yellow-100 to-amber-200 dark:from-yellow-900/30 dark:to-amber-800/30' :
+                fancyAlert.type === 'success' ? 'bg-gradient-to-br from-green-100 to-emerald-200 dark:from-green-900/30 dark:to-emerald-800/30' :
+                'bg-gradient-to-br from-blue-100 to-indigo-200 dark:from-blue-900/30 dark:to-indigo-800/30'
+              }`}>
+                {fancyAlert.type === 'error' ? (
+                  <XCircle size={40} className="text-red-600 dark:text-red-400" />
+                ) : fancyAlert.type === 'warning' ? (
+                  <AlertCircle size={40} className="text-yellow-600 dark:text-yellow-400" />
+                ) : fancyAlert.type === 'success' ? (
+                  <CheckCircle size={40} className="text-green-600 dark:text-green-400" />
+                ) : (
+                  <Info size={40} className="text-blue-600 dark:text-blue-400" />
+                )}
+              </div>
+
+              {/* Title */}
+              <h3 className={`text-2xl font-bold mb-2 ${
+                fancyAlert.type === 'error' ? 'text-red-700 dark:text-red-400' :
+                fancyAlert.type === 'warning' ? 'text-yellow-700 dark:text-yellow-400' :
+                fancyAlert.type === 'success' ? 'text-green-700 dark:text-green-400' :
+                'text-blue-700 dark:text-blue-400'
+              }`}>
+                {fancyAlert.title}
+              </h3>
+
+              {/* Message */}
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
+                {fancyAlert.message}
+              </p>
+
+              {/* Dismiss Button */}
+              <button
+                onClick={() => setFancyAlert(prev => ({ ...prev, show: false }))}
+                className={`px-8 py-3 rounded-xl font-bold text-white transition-all transform hover:scale-105 shadow-lg ${
+                  fancyAlert.type === 'error' ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700' :
+                  fancyAlert.type === 'warning' ? 'bg-gradient-to-r from-yellow-500 to-amber-600 hover:from-yellow-600 hover:to-amber-700' :
+                  fancyAlert.type === 'success' ? 'bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700' :
+                  'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700'
+                }`}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Surcharge Modal */}
+      {showSurchargeModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[250] p-4 animate-fade-in">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden transform animate-scale-in">
+            {/* Header */}
+            <div className="h-2 bg-gradient-to-r from-purple-500 to-indigo-600" />
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
+                  <Plus size={24} className="text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Add Surcharge</h3>
+                  <p className="text-sm text-gray-500">Add a custom charge to this order</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                    Description
+                  </label>
+                  <input
+                    type="text"
+                    value={surchargeDescription}
+                    onChange={(e) => setSurchargeDescription(e.target.value)}
+                    placeholder="e.g., Express service, Special treatment..."
+                    className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 focus:border-purple-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                    Amount (£)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={surchargeAmount}
+                    onChange={(e) => setSurchargeAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-xl font-bold focus:border-purple-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowSurchargeModal(false);
+                    setSurchargeDescription('');
+                    setSurchargeAmount('');
+                  }}
+                  className="flex-1 px-4 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-xl font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addSurcharge}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl font-bold hover:from-purple-600 hover:to-indigo-700 flex items-center justify-center gap-2"
+                >
+                  <Plus size={18} /> Add
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div >
   );
 };
@@ -6029,7 +7724,24 @@ const BookingPage: React.FC<{
       const slotObj = availableSlots.find(s => s.id === selectedSlot);
       const slotLabel = slotObj ? `${slotObj.day} ${slotObj.label}` : 'Flexible';
 
-      const orderData = {
+      // Get or create customer_id for proper FK relationship
+      let customerId: string | null = null;
+      if (currentUser?.id) {
+        customerId = currentUser.id;
+      } else if (customer.email) {
+        // Look up existing customer or create new one
+        const { data: existingCustomer } = await supabase
+          .from('cp_customers')
+          .select('id')
+          .eq('email', customer.email)
+          .eq('tenant_id', tenant.id)
+          .single();
+        if (existingCustomer) {
+          customerId = existingCustomer.id;
+        }
+      }
+
+      const orderData: any = {
         readable_id: readableId,
         customer_name: customer.name,
         customer_email: customer.email,
@@ -6048,6 +7760,11 @@ const BookingPage: React.FC<{
         preferences: userPreferences,
         tenant_id: tenant.id
       };
+
+      // Add customer_id if we have one
+      if (customerId) {
+        orderData.customer_id = customerId;
+      }
 
       console.log('Inserting order into DB:', orderData);
       const { data: orderResult, error: orderError } = await supabase.from('cp_orders').insert([orderData]).select().single();
@@ -6091,6 +7808,11 @@ const BookingPage: React.FC<{
       const { data: customerRecord, error: custError } = await supabase.from('cp_customers').upsert(customerUpdate, { onConflict: 'email' }).select().single();
       if (custError) console.warn('Customer upsert non-critical error:', custError);
 
+      // Update order with customer_id if we didn't have it initially (new customer)
+      if (customerRecord && !customerId) {
+        await supabase.from('cp_orders').update({ customer_id: customerRecord.id }).eq('id', orderResult.id);
+      }
+
       // --- NEW: Generate and store invoice in DB ---
       if (customerRecord) {
         const invoiceData = {
@@ -6106,8 +7828,12 @@ const BookingPage: React.FC<{
       }
 
       // --- Stripe Payment / Subscription Integration ---
-      // We initiate Stripe if there is a total to pay OR if it is a recurring order (to save the card)
-      if (companySettings?.stripe_connect_account_id && (totals.finalTotal > 0 || recurring !== 'none')) {
+      // Only require Stripe payment if tenant uses per-transaction billing
+      const requiresStripePayment = tenant?.billing_type === 'per_transaction' &&
+        companySettings?.stripe_connect_account_id &&
+        (totals.finalTotal > 0 || recurring !== 'none');
+
+      if (requiresStripePayment) {
         console.log('Initiating Stripe Payment Redirect...');
         try {
           const { data: stripeData, error: stripeInvokeError } = await supabase.functions.invoke('stripe-payment', {
@@ -6962,6 +8688,22 @@ const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [tableSearchTerm, setTableSearchTerm] = useState('');
   const [tableSortConfig, setTableSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
 
+  // Collection Failed Modal states
+  const [showCollectionFailedModal, setShowCollectionFailedModal] = useState(false);
+  const [collectionFailedOrderId, setCollectionFailedOrderId] = useState<string | null>(null);
+  const [collectionFailedReason, setCollectionFailedReason] = useState('');
+
+  const handleCollectionFailed = async () => {
+    if (!collectionFailedOrderId || !collectionFailedReason) return;
+    await supabase.from('cp_orders').update({
+      status: 'collection_failed',
+      notes: `Collection failed: ${collectionFailedReason}`
+    }).eq('id', collectionFailedOrderId);
+    setShowCollectionFailedModal(false);
+    setCollectionFailedOrderId(null);
+    setCollectionFailedReason('');
+  };
+
   // Fetch all data
   const fetchReportData = async () => {
     setLoading(true);
@@ -7681,6 +9423,72 @@ const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           .bg-gray-50 { background: white !important; }
         }
       `}</style>
+
+      {/* Collection Failed Modal */}
+      {showCollectionFailedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+                <XCircle size={24} className="text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Collection Failed</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Customer or order not ready</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Reason for Failed Collection *
+              </label>
+              <select
+                value={collectionFailedReason}
+                onChange={(e) => setCollectionFailedReason(e.target.value)}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm dark:bg-gray-700 dark:text-white mb-2"
+              >
+                <option value="">Select a reason...</option>
+                <option value="Customer not home">Customer not home</option>
+                <option value="Customer not ready">Customer not ready</option>
+                <option value="Wrong address">Wrong address</option>
+                <option value="Customer cancelled">Customer cancelled</option>
+                <option value="Access issues">Access issues (gate/building)</option>
+                <option value="Customer rescheduled">Customer rescheduled</option>
+                <option value="Other">Other (specify below)</option>
+              </select>
+              {collectionFailedReason === 'Other' && (
+                <textarea
+                  value=""
+                  onChange={(e) => setCollectionFailedReason(e.target.value)}
+                  placeholder="Please specify the reason..."
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm dark:bg-gray-700 dark:text-white"
+                  rows={3}
+                />
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCollectionFailedModal(false);
+                  setCollectionFailedOrderId(null);
+                  setCollectionFailedReason('');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCollectionFailed}
+                disabled={!collectionFailedReason}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Mark as Failed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -7692,6 +9500,9 @@ const DriverPortalPage: React.FC<{ driver: any; onLogout: () => void; darkMode: 
   const [podPhoto, setPodPhoto] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
+  const [showCollectionFailedModal, setShowCollectionFailedModal] = useState(false);
+  const [collectionFailedReason, setCollectionFailedReason] = useState('');
+  const [collectionFailedOrderId, setCollectionFailedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDeliveries();
@@ -7808,6 +9619,40 @@ const DriverPortalPage: React.FC<{ driver: any; onLogout: () => void; darkMode: 
         alert('Order marked as completed!');
         setSelectedDelivery(null);
       }
+    }
+  };
+
+  const openCollectionFailedModal = (orderId: string) => {
+    setCollectionFailedOrderId(orderId);
+    setCollectionFailedReason('');
+    setShowCollectionFailedModal(true);
+  };
+
+  const handleCollectionFailed = async () => {
+    if (!collectionFailedOrderId || !collectionFailedReason.trim()) {
+      alert('Please provide a reason for the failed collection.');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('cp_orders')
+      .update({
+        status: 'collection_failed',
+        collection_status: 'collection_failed',
+        collection_failed_reason: collectionFailedReason.trim(),
+        collection_failed_at: new Date().toISOString()
+      })
+      .eq('id', collectionFailedOrderId);
+
+    if (!error) {
+      alert('Collection marked as failed. The order has been flagged for follow-up.');
+      setShowCollectionFailedModal(false);
+      setCollectionFailedOrderId(null);
+      setCollectionFailedReason('');
+      setSelectedDelivery(null);
+      fetchDeliveries();
+    } else {
+      alert('Error updating order: ' + error.message);
     }
   };
 
@@ -8102,6 +9947,17 @@ const DriverPortalPage: React.FC<{ driver: any; onLogout: () => void; darkMode: 
                             >
                               {uploading ? 'Uploading...' : (isCollection ? 'Complete Collection' : 'Complete Delivery')}
                             </button>
+
+                            {/* Customer/Order Not Ready - Collection Failed */}
+                            {isCollection && (
+                              <button
+                                onClick={() => openCollectionFailedModal(selectedDelivery.id)}
+                                className="w-full bg-red-500 text-white py-2 rounded-lg font-bold hover:bg-red-600 flex items-center justify-center gap-2"
+                              >
+                                <XCircle size={18} />
+                                Customer/Order Not Ready
+                              </button>
+                            )}
                           </div>
                         </>
                       )}
@@ -8206,6 +10062,72 @@ const DriverPortalPage: React.FC<{ driver: any; onLogout: () => void; darkMode: 
           )}
         </div>
       )}
+
+      {/* Collection Failed Modal */}
+      {showCollectionFailedModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center">
+                <XCircle size={24} className="text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Collection Failed</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Customer or order not ready</p>
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Reason for Failed Collection *
+              </label>
+              <select
+                value={collectionFailedReason}
+                onChange={(e) => setCollectionFailedReason(e.target.value)}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm dark:bg-gray-700 dark:text-white mb-2"
+              >
+                <option value="">Select a reason...</option>
+                <option value="Customer not home">Customer not home</option>
+                <option value="Customer not ready">Customer not ready</option>
+                <option value="Wrong address">Wrong address</option>
+                <option value="Customer cancelled">Customer cancelled</option>
+                <option value="Access issues">Access issues (gate/building)</option>
+                <option value="Customer rescheduled">Customer rescheduled</option>
+                <option value="Other">Other (specify below)</option>
+              </select>
+              {collectionFailedReason === 'Other' && (
+                <textarea
+                  value=""
+                  onChange={(e) => setCollectionFailedReason(e.target.value)}
+                  placeholder="Please specify the reason..."
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg p-3 text-sm dark:bg-gray-700 dark:text-white"
+                  rows={3}
+                />
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCollectionFailedModal(false);
+                  setCollectionFailedOrderId(null);
+                  setCollectionFailedReason('');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-bold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCollectionFailed}
+                disabled={!collectionFailedReason}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Mark as Failed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -8260,6 +10182,7 @@ const TrackOrderPage: React.FC = () => {
       pending: { label: 'Order Received', color: 'yellow', icon: Package, description: 'Your order has been received and is being processed' },
       dispatched: { label: 'Driver Dispatched', color: 'blue', icon: Truck, description: 'A driver has been dispatched to collect your items' },
       collecting: { label: 'Collecting Items', color: 'blue', icon: Package, description: 'Driver is collecting your items' },
+      collection_failed: { label: 'Collection Failed', color: 'red', icon: XCircle, description: 'Collection was unsuccessful - customer or order not ready' },
       collected: { label: 'Items Collected', color: 'indigo', icon: Check, description: 'Your items have been collected successfully' },
       cleaning: { label: 'In Cleaning', color: 'purple', icon: Shirt, description: 'Your items are being cleaned and processed' },
       ready_for_delivery: { label: 'Ready for Delivery', color: 'orange', icon: PackageCheck, description: 'Your items are cleaned and ready for delivery' },
@@ -8271,6 +10194,7 @@ const TrackOrderPage: React.FC = () => {
   };
 
   const getProgressPercentage = (status: string) => {
+    if (status === 'collection_failed') return 33; // Collection phase percentage
     const stages = ['pending', 'dispatched', 'collecting', 'collected', 'cleaning', 'ready_for_delivery', 'out_for_delivery', 'delivered', 'completed'];
     const currentIndex = stages.indexOf(status);
     return ((currentIndex + 1) / stages.length) * 100;
@@ -8372,6 +10296,31 @@ const TrackOrderPage: React.FC = () => {
 
               <p className="text-gray-600 dark:text-gray-400">{statusInfo.description}</p>
             </div>
+
+            {/* Collection Failed Alert */}
+            {order.status === 'collection_failed' && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl shadow-xl p-6 mb-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                    <XCircle size={24} className="text-red-600 dark:text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-red-800 dark:text-red-200 mb-1">Collection Unsuccessful</h3>
+                    <p className="text-red-700 dark:text-red-300 mb-2">
+                      Our driver was unable to complete the collection for this order.
+                    </p>
+                    {order.collection_failed_reason && (
+                      <p className="text-sm text-red-600 dark:text-red-400">
+                        <span className="font-bold">Reason:</span> {order.collection_failed_reason}
+                      </p>
+                    )}
+                    <p className="text-sm text-red-600 dark:text-red-400 mt-2">
+                      Our team will contact you to reschedule the collection.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Timeline */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
@@ -8565,15 +10514,8 @@ const PartnerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
     const protocol = window.location.protocol;
     const port = window.location.port ? `:${window.location.port}` : '';
 
-    if (host.includes('localhost') || host.match(/\d+\.\d+\.\d+\.\d+/)) {
-      // In local dev, we try to navigate using the same host but conceptually we'd need subdomain support
-      // For now, we'll try to redirect to the subdomain on the main dev domain if configured
-      // or just attempt the redirect and let the dev environment handle it (e.g. if using lvh.me)
-      window.location.href = `${protocol}//${cleanSubdomain}.localhost${port}/`;
-    } else {
-      // Production redirect
-      window.location.href = `https://${cleanSubdomain}.cleanpos.app/back-office`;
-    }
+    // Use tenant query parameter for compatibility with Firebase hosting (no subdomain support)
+    window.location.href = `${window.location.origin}/back-office?tenant=${cleanSubdomain}`;
   };
 
   if (!isOpen) return null;
@@ -9573,8 +11515,15 @@ const App: React.FC = () => {
     if (tenant) {
       fetchSlots();
       fetchDeliveryOptions();
+      // Check if we need to open admin login (from /back-office URL path)
+      if (window.location.pathname.includes('back-office') && !userRole) {
+        setStaffLoginType('admin');
+        setIsStaffLoginOpen(true);
+        // Clean up URL to prevent re-triggering
+        window.history.replaceState({}, '', `/?tenant=${tenant.subdomain}`);
+      }
     }
-  }, [tenant]);
+  }, [tenant, userRole]);
 
   const fetchSlots = async () => {
     if (!tenant) return;

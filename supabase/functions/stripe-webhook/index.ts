@@ -10,8 +10,11 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
 // Dynamic CORS for multi-tenant subdomains
 const getAllowedOrigin = (req: Request): string => {
     const origin = req.headers.get('origin') || '';
+    // Allow cleanpos.app subdomains, Firebase hosting, localhost for dev
     if (origin.endsWith('.cleanpos.app') ||
         origin === 'https://cleanpos.app' ||
+        origin.endsWith('.web.app') ||
+        origin.endsWith('.firebaseapp.com') ||
         origin.startsWith('http://localhost:') ||
         origin.startsWith('http://127.0.0.1:')) {
         return origin;

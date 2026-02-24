@@ -1,0 +1,63 @@
+CLEANPOS SOFTWARE LICENSE AGREEMENT
+====================================
+Posso One Suite - Professional Business Software
+
+IMPORTANT: Please read this agreement carefully before installing CleanPos.
+By installing and using this software, you agree to be bound by the terms
+of this license agreement.
+
+FULL TERMS: https://posso.co.uk/software-terms
+
+--------------------------------------------------------------------
+
+1. LICENSE GRANT
+
+Posso grants you a non-exclusive, non-transferable license to use CleanPos
+software for your business operations, subject to the terms and conditions
+of this agreement.
+
+2. SOFTWARE USAGE
+
+CleanPos is designed for professional dry cleaning and laundry point-of-sale
+management. You may:
+- Install and use the software on devices within your business
+- Process customer orders, payments, and manage operations
+- Print labels and receipts for your business use
+- Access cloud features with an active subscription
+
+3. DATA & PRIVACY
+
+Your data is stored securely in the cloud. We handle customer information
+in accordance with applicable data protection regulations. You are
+responsible for obtaining necessary consents from your customers.
+
+4. PAYMENT PROCESSING
+
+Payment processing is handled through Stripe Connect. Standard payment
+processing fees apply. Posso does not store credit card details.
+
+5. SUPPORT & UPDATES
+
+Software updates are provided automatically. Technical support is available
+through our support channels at posso.co.uk.
+
+6. RESTRICTIONS
+
+You may not:
+- Reverse engineer, decompile, or disassemble the software
+- Rent, lease, or lend the software to third parties
+- Remove any proprietary notices or labels
+- Use the software for illegal purposes
+
+7. DISCLAIMER
+
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+POSSO SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, OR
+CONSEQUENTIAL DAMAGES.
+
+--------------------------------------------------------------------
+
+Full Terms & Conditions: https://posso.co.uk/software-terms
+Support: support@posso.co.uk
+
+(c) 2024 Posso. All rights reserved.

@@ -9,9 +9,11 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
 // Dynamic CORS for multi-tenant subdomains
 const getAllowedOrigin = (req: Request): string => {
     const origin = req.headers.get('origin') || '';
-    // Allow cleanpos.app subdomains, localhost for dev
+    // Allow cleanpos.app subdomains, Firebase hosting, localhost for dev
     if (origin.endsWith('.cleanpos.app') ||
         origin === 'https://cleanpos.app' ||
+        origin.endsWith('.web.app') ||
+        origin.endsWith('.firebaseapp.com') ||
         origin.startsWith('http://localhost:') ||
         origin.startsWith('http://127.0.0.1:')) {
         return origin;
@@ -50,8 +52,8 @@ serve(async (req) => {
             throw new Error('This store has not connected their Stripe account yet.')
         }
 
-        // 2. Platform Fee (Application Fee) - Flat £1.00
-        const feeAmount = 100; // 100 pence = £1.00
+        // 2. Platform Fee (Application Fee) - Flat £1.20 (£1 + VAT)
+        const feeAmount = 120; // 120 pence = £1.20
 
         // 3. Get or Create Stripe Customer ON THE CONNECTED ACCOUNT (Direct Charge)
         const customerId = await getOrCreateCustomer(email, customerName, stripe, connectedAccountId)
