@@ -6992,13 +6992,14 @@ const BackOfficePage: React.FC<{
                     onChange={(e) => {
                       const service = availableServices.find(s => s.id === e.target.value);
                       if (service) {
+                        const price = service.price_numeric || service.price || 0;
                         setOrderItems([...orderItems, {
                           id: service.id,
                           item_name: service.name,
                           name: service.name,
                           quantity: 1,
-                          unit_price: service.price,
-                          price: service.price
+                          unit_price: price,
+                          price: price
                         }]);
                         e.target.value = '';
                       }
@@ -7008,7 +7009,7 @@ const BackOfficePage: React.FC<{
                   >
                     <option value="">-- Select service --</option>
                     {availableServices.map(s => (
-                      <option key={s.id} value={s.id}>{s.name} - £{s.price}</option>
+                      <option key={s.id} value={s.id}>{s.name} - £{(s.price_numeric || 0).toFixed(2)}</option>
                     ))}
                   </select>
                 </div>
