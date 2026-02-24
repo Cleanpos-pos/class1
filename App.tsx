@@ -2107,10 +2107,10 @@ const BackOfficePage: React.FC<{
       // Clean up the input - remove # prefix if present
       const cleanId = orderId.replace(/^#/, '').trim();
 
-      // First try to find by UUID (full id) - include items via join
+      // First try to find by UUID (full id)
       let { data, error } = await supabase
         .from('cp_orders')
-        .select('*, items:cp_order_items(*)')
+        .select('*')
         .eq('id', orderId)
         .single();
 
@@ -2118,7 +2118,7 @@ const BackOfficePage: React.FC<{
       if (error || !data) {
         const { data: dataByReadable, error: errorByReadable } = await supabase
           .from('cp_orders')
-          .select('*, items:cp_order_items(*)')
+          .select('*')
           .eq('readable_id', cleanId.toUpperCase())
           .single();
 
@@ -2132,7 +2132,7 @@ const BackOfficePage: React.FC<{
       if (error || !data) {
         const { data: dataByTicket, error: errorByTicket } = await supabase
           .from('cp_orders')
-          .select('*, items:cp_order_items(*)')
+          .select('*')
           .eq('pos_ticket_id', cleanId)
           .single();
 
@@ -2147,12 +2147,26 @@ const BackOfficePage: React.FC<{
         return;
       }
 
+      // Fetch order items separately (more reliable than join)
+      const { data: orderItems, error: itemsError } = await supabase
+        .from('cp_order_items')
+        .select('*')
+        .eq('order_id', data.id);
+
+      console.log('Order items query:', { orderId: data.id, items: orderItems, error: itemsError });
+
+      // Attach items to order
+      if (orderItems && orderItems.length > 0) {
+        data.items = orderItems;
+      }
+
       // Debug: log order data to check items
       console.log('Scanned order data:', { id: data.id, items: data.items, itemCount: data.items?.length });
 
       setScannedOrder(data);
       setShowScannedOrderModal(true);
     } catch (err) {
+      console.error('Error loading order:', err);
       alert('Error loading order');
     }
   };

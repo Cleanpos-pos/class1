@@ -4,6 +4,35 @@
 -- =====================================================
 
 -- =====================================================
+-- 0. CREATE MISSING TABLES
+-- =====================================================
+
+-- cp_order_items table (stores individual items for each order)
+CREATE TABLE IF NOT EXISTS cp_order_items (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  order_id uuid NOT NULL REFERENCES cp_orders(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  item_name text NOT NULL,
+  quantity integer DEFAULT 1,
+  unit_price numeric(10,2) DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+
+-- cp_delivery_options table (delivery pricing options)
+CREATE TABLE IF NOT EXISTS cp_delivery_options (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  label text NOT NULL,
+  price numeric(10,2) DEFAULT 0,
+  active boolean DEFAULT true,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Index for fast order item lookups
+CREATE INDEX IF NOT EXISTS idx_cp_order_items_order_id ON cp_order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_cp_order_items_tenant_id ON cp_order_items(tenant_id);
+
+-- =====================================================
 -- 1. CUSTOMER PREFERENCES COLUMNS
 -- =====================================================
 ALTER TABLE cp_customers
@@ -88,6 +117,7 @@ ALTER TABLE company_settings ADD COLUMN IF NOT EXISTS stripe_connect_account_id 
 -- =====================================================
 ALTER TABLE cp_customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cp_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cp_order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cp_drivers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cp_services ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cp_categories ENABLE ROW LEVEL SECURITY;
@@ -138,6 +168,27 @@ CREATE POLICY "anon_insert_cp_orders" ON cp_orders
 DROP POLICY IF EXISTS "anon_update_cp_orders" ON cp_orders;
 CREATE POLICY "anon_update_cp_orders" ON cp_orders
   FOR UPDATE USING (true);
+
+-- cp_order_items policies
+DROP POLICY IF EXISTS "service_role_all_cp_order_items" ON cp_order_items;
+CREATE POLICY "service_role_all_cp_order_items" ON cp_order_items
+  FOR ALL USING (auth.role() = 'service_role');
+
+DROP POLICY IF EXISTS "anon_read_cp_order_items" ON cp_order_items;
+CREATE POLICY "anon_read_cp_order_items" ON cp_order_items
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "anon_insert_cp_order_items" ON cp_order_items;
+CREATE POLICY "anon_insert_cp_order_items" ON cp_order_items
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_update_cp_order_items" ON cp_order_items;
+CREATE POLICY "anon_update_cp_order_items" ON cp_order_items
+  FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "anon_delete_cp_order_items" ON cp_order_items;
+CREATE POLICY "anon_delete_cp_order_items" ON cp_order_items
+  FOR DELETE USING (true);
 
 -- cp_drivers policies
 DROP POLICY IF EXISTS "service_role_all_cp_drivers" ON cp_drivers;
