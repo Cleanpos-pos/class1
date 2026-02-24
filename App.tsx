@@ -1641,12 +1641,18 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
                           <Search size={16} />
                           {isExpanded ? 'Hide Details' : 'Track Order'}
                         </button>
-                        <button
-                          onClick={() => generateInvoice(invoice ? { ...order, ...invoice } : order, user?.tenant_id || order.tenant_id)}
-                          className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-300 rounded px-4 py-2 hover:bg-gray-50 transition"
-                        >
-                          <Download size={16} /> Invoice
-                        </button>
+                        {order.status === 'completed' ? (
+                          <button
+                            onClick={() => generateInvoice(invoice ? { ...order, ...invoice } : order, user?.tenant_id || order.tenant_id)}
+                            className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 border border-gray-300 rounded px-4 py-2 hover:bg-gray-50 transition"
+                          >
+                            <Download size={16} /> Invoice
+                          </button>
+                        ) : (
+                          <span className="flex items-center gap-2 text-sm text-gray-400 border border-gray-200 rounded px-4 py-2 cursor-not-allowed">
+                            <FileText size={16} /> Invoice (Available when complete)
+                          </span>
+                        )}
                       </div>
                     </div>
 
