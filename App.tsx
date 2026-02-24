@@ -3943,7 +3943,6 @@ const BackOfficePage: React.FC<{
                       <div className="flex gap-1.5 flex-wrap max-w-2xl">
                         {/* Dispatch for Collection */}
                         <button onClick={() => updateOrderStatus(order.id, 'dispatched')} title="Dispatch for Collection" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'dispatched' ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Truck size={14} /><span className="text-[8px] font-bold mt-0.5">Dispatch</span></button>
-                        <button onClick={() => openEditOrder(order)} title="Edit Items / Add Repair" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:bg-orange-50"><Edit3 size={14} /><span className="text-[8px] font-bold mt-0.5">Edit</span></button>
 
                         {/* Collecting */}
                         <button onClick={() => updateOrderStatus(order.id, 'collecting')} title="Collecting" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collecting' ? 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Package size={14} /><span className="text-[8px] font-bold mt-0.5">Collect</span></button>
@@ -3965,6 +3964,9 @@ const BackOfficePage: React.FC<{
 
                         {/* Delivered */}
                         <button onClick={() => updateOrderStatus(order.id, 'delivered')} title="Delivered" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'delivered' ? 'bg-teal-600 text-white border-teal-700 ring-2 ring-teal-200' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:bg-teal-50'}`}><CheckCircle size={14} /><span className="text-[8px] font-bold mt-0.5">Delivered</span></button>
+
+                        {/* Edit Order */}
+                        <button onClick={() => openEditOrder(order)} title="Edit Items / Add Repair" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:bg-orange-50"><Edit3 size={14} /><span className="text-[8px] font-bold mt-0.5">Edit</span></button>
 
                         {/* Completed */}
                         <button onClick={() => updateOrderStatus(order.id, 'completed')} title="Mark as Completed" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'completed' ? 'bg-green-600 text-white border-green-700 ring-2 ring-green-200' : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:bg-green-50'}`}><CheckCircle2 size={14} /><span className="text-[8px] font-bold mt-0.5">Complete</span></button>
