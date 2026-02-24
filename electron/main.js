@@ -501,6 +501,98 @@ function generateLabelHtml(tagData) {
   `;
 }
 
+// Generate garment tag HTML - smaller tag, one per item with position indicator
+function generateGarmentTagHtml(tagData) {
+  const {
+    ticketNumber,
+    customerName,
+    dueDate,
+    itemName,
+    itemIndex,
+    itemTotal
+  } = tagData;
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page { size: 62mm 40mm; margin: 0; }
+    @media print { html, body { width: 62mm; height: 40mm; margin: 0; padding: 0; } }
+    body {
+      font-family: Arial, sans-serif;
+      width: 62mm;
+      height: 40mm;
+      padding: 2mm;
+      background: white;
+      color: black;
+    }
+    .garment-tag {
+      width: 100%;
+      height: 100%;
+      border: 2px solid #000;
+      padding: 2mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #000;
+      padding-bottom: 1mm;
+    }
+    .ticket-num {
+      font-size: 14pt;
+      font-weight: bold;
+    }
+    .position {
+      font-size: 16pt;
+      font-weight: bold;
+      background: #000;
+      color: #fff;
+      padding: 1mm 3mm;
+      border-radius: 2mm;
+    }
+    .customer {
+      font-size: 12pt;
+      font-weight: bold;
+      text-align: center;
+      padding: 1mm 0;
+    }
+    .item-name {
+      font-size: 11pt;
+      font-weight: bold;
+      text-align: center;
+      background: #f0f0f0;
+      padding: 1mm;
+      border-radius: 1mm;
+    }
+    .due-date {
+      font-size: 9pt;
+      text-align: center;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="garment-tag">
+    <div class="top-row">
+      <span class="ticket-num">#${ticketNumber || '---'}</span>
+      <span class="position">${itemIndex}/${itemTotal}</span>
+    </div>
+    <div class="customer">${customerName || 'Walk-in'}</div>
+    <div class="item-name">${itemName || 'Item'}</div>
+    <div class="due-date">Due: ${dueDate || 'TBD'}</div>
+  </div>
+</body>
+</html>
+  `;
+}
+
 // Create desktop shortcut
 function createDesktopShortcut() {
   if (process.platform === 'win32') {
@@ -701,6 +793,53 @@ function setupIpcHandlers() {
       }
     }
     return results;
+  });
+
+  // Print a garment tag (smaller, one per item with cut after)
+  ipcMain.handle('print-garment-tag', async (event, tagData) => {
+    try {
+      if (!BROTHER_QL800_CONFIG.printerName) {
+        const printers = await mainWindow.webContents.getPrintersAsync();
+        const brotherPrinter = printers.find(p => p.name.toLowerCase().includes('brother'));
+        if (brotherPrinter) {
+          BROTHER_QL800_CONFIG.printerName = brotherPrinter.name;
+        } else {
+          return { success: false, error: 'No printer configured.' };
+        }
+      }
+
+      const garmentHtml = generateGarmentTagHtml(tagData);
+      const tempFile = path.join(os.tmpdir(), `garment-tag-${Date.now()}.html`);
+      fs.writeFileSync(tempFile, garmentHtml, 'utf8');
+
+      if (!printWindow || printWindow.isDestroyed()) {
+        createPrintWindow();
+      }
+
+      await printWindow.loadFile(tempFile);
+
+      const printOptions = {
+        silent: true,
+        printBackground: true,
+        deviceName: BROTHER_QL800_CONFIG.printerName,
+        margins: { marginType: 'none' },
+        pageSize: { width: 62000, height: 40000 } // Smaller height for garment tags
+      };
+
+      return new Promise((resolve) => {
+        printWindow.webContents.print(printOptions, (success, failureReason) => {
+          try { fs.unlinkSync(tempFile); } catch (e) {}
+          if (!success) {
+            resolve({ success: false, error: failureReason || 'Print failed' });
+          } else {
+            resolve({ success: true, message: 'Garment tag sent to printer' });
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Garment tag print error:', error);
+      return { success: false, error: error.message };
+    }
   });
 
   // Show print settings

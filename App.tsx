@@ -1980,6 +1980,105 @@ const BackOfficePage: React.FC<{
     }
   };
 
+  // Print Garment Tags - one tag per item with 1/5, 2/5 format
+  const printGarmentTags = async (order: any) => {
+    let items: any[] = [];
+    try {
+      items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+    } catch (e) {
+      items = [];
+    }
+
+    if (items.length === 0) {
+      showPrintToast('warning', 'No items to print garment tags for');
+      return;
+    }
+
+    // Expand items based on quantity (3x Shirt = 3 separate tags)
+    const expandedItems: { name: string; index: number; total: number }[] = [];
+    items.forEach((item: any) => {
+      const qty = item.quantity || 1;
+      const name = item.item_name || item.name || item.service_name || 'Item';
+      for (let i = 0; i < qty; i++) {
+        expandedItems.push({ name, index: 0, total: 0 });
+      }
+    });
+
+    // Set index and total for each
+    const totalItems = expandedItems.length;
+    expandedItems.forEach((item, idx) => {
+      item.index = idx + 1;
+      item.total = totalItems;
+    });
+
+    const ticketNumber = order.pos_ticket_id || order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---';
+    const customerName = order.customer_name || 'Walk-in';
+    const dueDate = order.due_date ? new Date(order.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD';
+
+    // Print each garment tag
+    if ((window as any).electronPrint) {
+      for (let i = 0; i < expandedItems.length; i++) {
+        const item = expandedItems[i];
+        const garmentTagData = {
+          ticketNumber,
+          customerName,
+          dueDate,
+          itemName: item.name,
+          itemIndex: item.index,
+          itemTotal: item.total,
+          isGarmentTag: true
+        };
+
+        // Small delay between prints to avoid overwhelming the printer
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await (window as any).electronPrint.printGarmentTag(garmentTagData);
+      }
+      showPrintToast('success', `${expandedItems.length} garment tags sent to printer!`);
+    } else {
+      // Browser fallback - open single window with all tags
+      const printWindow = window.open('', '_blank', 'width=400,height=600');
+      if (printWindow) {
+        const tagsHtml = expandedItems.map(item => `
+          <div class="garment-tag" style="page-break-after: always;">
+            <div class="ticket-num">#${ticketNumber}</div>
+            <div class="item-position">${item.index}/${item.total}</div>
+            <div class="customer">${customerName}</div>
+            <div class="item-name">${item.name}</div>
+            <div class="due-date">Due: ${dueDate}</div>
+          </div>
+        `).join('');
+
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Garment Tags - #${ticketNumber}</title>
+            <style>
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              @page { size: 62mm 40mm; margin: 0; }
+              body { font-family: Arial, sans-serif; }
+              .garment-tag {
+                width: 62mm; height: 38mm; padding: 2mm;
+                border: 1px solid #000; margin-bottom: 2mm;
+                display: flex; flex-direction: column; justify-content: space-between;
+              }
+              .ticket-num { font-size: 14pt; font-weight: bold; }
+              .item-position { font-size: 20pt; font-weight: bold; text-align: center; background: #000; color: #fff; padding: 2mm; border-radius: 3mm; }
+              .customer { font-size: 12pt; font-weight: bold; }
+              .item-name { font-size: 10pt; }
+              .due-date { font-size: 9pt; color: #666; }
+            </style>
+          </head>
+          <body>${tagsHtml}</body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.print();
+        showPrintToast('success', 'Garment tags print preview opened');
+      }
+    }
+  };
+
   // Generate print tag HTML for browser fallback
   const generatePrintTagHtml = (tagData: any) => `
     <!DOCTYPE html>
@@ -3971,12 +4070,15 @@ const BackOfficePage: React.FC<{
                         {/* Completed */}
                         <button onClick={() => updateOrderStatus(order.id, 'completed')} title="Mark as Completed" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'completed' ? 'bg-green-600 text-white border-green-700 ring-2 ring-green-200' : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:bg-green-50'}`}><CheckCircle2 size={14} /><span className="text-[8px] font-bold mt-0.5">Complete</span></button>
 
-                        {/* Print Tag */}
+                        {/* Bag Tags */}
                         <button onClick={() => {
                           setPrintTagOrder(order);
                           setPrintTagCount(settings.default_tag_count || 1);
                           setShowPrintTagModal(true);
-                        }} title="Print Tag for Label Printer" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-pink-400 hover:bg-pink-50"><Printer size={14} /><span className="text-[8px] font-bold mt-0.5">Tag</span></button>
+                        }} title="Print Bag Tags" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-pink-400 hover:bg-pink-50"><ShoppingBag size={14} /><span className="text-[8px] font-bold mt-0.5">Bag Tags</span></button>
+
+                        {/* Garment Tags */}
+                        <button onClick={() => printGarmentTags(order)} title="Print Garment Tags (1 per item)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">Garment</span></button>
                       </div>
                     </td>
                   </tr>

@@ -11,8 +11,11 @@ contextBridge.exposeInMainWorld('electronPrint', {
   // Set printer manually
   setPrinter: (printerName) => ipcRenderer.invoke('set-printer', printerName),
 
-  // Print a single tag
+  // Print a single bag tag
   printTag: (tagData) => ipcRenderer.invoke('print-tag', tagData),
+
+  // Print a garment tag (smaller, one per item)
+  printGarmentTag: (tagData) => ipcRenderer.invoke('print-garment-tag', tagData),
 
   // Print multiple tags
   printTagsBatch: (tagsData) => ipcRenderer.invoke('print-tags-batch', tagsData),
