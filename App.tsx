@@ -2300,10 +2300,23 @@ const BackOfficePage: React.FC<{
       if (error) {
         showFancyAlert('error', 'Update Failed', 'Failed to update order: ' + error.message);
       } else {
+        // Also update the associated invoice
+        const invoiceItems = allItems.map(item => ({
+          name: item.item_name || item.name || item.service_name || 'Item',
+          quantity: item.quantity || 1,
+          price: (item.unit_price || item.price || 0).toString()
+        }));
+
+        await supabase.from('cp_invoices').update({
+          amount: newTotal,
+          items: invoiceItems
+        }).eq('order_id', editingOrder.id);
+
         showFancyAlert('success', 'Order Updated', `Order total is now £${newTotal.toFixed(2)}`);
         setIsEditOrderOpen(false);
         setEditingOrder(null);
         fetchOrders();
+        fetchInvoices();
       }
     } catch (err: any) {
       showFancyAlert('error', 'Error', 'Failed to save changes: ' + err.message);
