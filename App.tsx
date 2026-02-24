@@ -2036,12 +2036,14 @@ const BackOfficePage: React.FC<{
       showPrintToast('success', `${expandedItems.length} garment tags sent to printer!`);
     } else {
       // Browser fallback - open single window with all tags
-      const printWindow = window.open('', '_blank', 'width=400,height=600');
+      const printWindow = window.open('', '_blank', 'width=300,height=600');
       if (printWindow) {
         const tagsHtml = expandedItems.map(item => `
           <div class="garment-tag" style="page-break-after: always;">
-            <div class="ticket-num">#${ticketNumber}</div>
-            <div class="item-position">${item.index}/${item.total}</div>
+            <div class="header">
+              <span class="ticket-num">#${ticketNumber}</span>
+              <span class="position">${item.index}/${item.total}</span>
+            </div>
             <div class="customer">${customerName}</div>
             <div class="item-name">${item.name}</div>
             <div class="due-date">Due: ${dueDate}</div>
@@ -2055,18 +2057,18 @@ const BackOfficePage: React.FC<{
             <title>Garment Tags - #${ticketNumber}</title>
             <style>
               * { margin: 0; padding: 0; box-sizing: border-box; }
-              @page { size: 62mm 40mm; margin: 0; }
+              @page { size: 30mm 50mm; margin: 0; }
               body { font-family: Arial, sans-serif; }
               .garment-tag {
-                width: 62mm; height: 38mm; padding: 2mm;
-                border: 1px solid #000; margin-bottom: 2mm;
-                display: flex; flex-direction: column; justify-content: space-between;
+                width: 30mm; height: 48mm; padding: 1mm;
+                border: 1.5px solid #000; margin-bottom: 2mm;
               }
-              .ticket-num { font-size: 14pt; font-weight: bold; }
-              .item-position { font-size: 20pt; font-weight: bold; text-align: center; background: #000; color: #fff; padding: 2mm; border-radius: 3mm; }
-              .customer { font-size: 12pt; font-weight: bold; }
-              .item-name { font-size: 10pt; }
-              .due-date { font-size: 9pt; color: #666; }
+              .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 0.5mm; margin-bottom: 1mm; }
+              .ticket-num { font-size: 8pt; font-weight: bold; }
+              .position { font-size: 10pt; font-weight: bold; background: #000; color: #fff; padding: 0.5mm 1.5mm; }
+              .customer { font-size: 7pt; font-weight: bold; text-align: center; border-bottom: 1px dashed #999; padding-bottom: 1mm; margin-bottom: 1mm; }
+              .item-name { font-size: 6pt; font-weight: bold; text-align: center; background: #eee; padding: 1mm; margin-bottom: 1mm; }
+              .due-date { font-size: 6pt; text-align: center; font-weight: bold; }
             </style>
           </head>
           <body>${tagsHtml}</body>

@@ -501,7 +501,7 @@ function generateLabelHtml(tagData) {
   `;
 }
 
-// Generate garment tag HTML - smaller tag, one per item with position indicator
+// Generate garment tag HTML - compact tag, one per item with position indicator
 function generateGarmentTagHtml(tagData) {
   const {
     ticketNumber,
@@ -519,68 +519,71 @@ function generateGarmentTagHtml(tagData) {
   <meta charset="UTF-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: 62mm 40mm; margin: 0; }
-    @media print { html, body { width: 62mm; height: 40mm; margin: 0; padding: 0; } }
+    @page { size: 30mm 50mm; margin: 0; }
+    @media print { html, body { width: 30mm; height: 50mm; margin: 0; padding: 0; } }
     body {
       font-family: Arial, sans-serif;
-      width: 62mm;
-      height: 40mm;
-      padding: 2mm;
+      width: 30mm;
+      height: 50mm;
+      padding: 1mm;
       background: white;
       color: black;
     }
     .garment-tag {
       width: 100%;
       height: 100%;
-      border: 2px solid #000;
-      padding: 2mm;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
+      border: 1.5px solid #000;
+      padding: 1mm;
     }
-    .top-row {
+    .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
       border-bottom: 1px solid #000;
-      padding-bottom: 1mm;
+      padding-bottom: 0.5mm;
+      margin-bottom: 1mm;
     }
     .ticket-num {
-      font-size: 14pt;
+      font-size: 8pt;
       font-weight: bold;
     }
     .position {
-      font-size: 16pt;
+      font-size: 10pt;
       font-weight: bold;
       background: #000;
       color: #fff;
-      padding: 1mm 3mm;
-      border-radius: 2mm;
+      padding: 0.5mm 1.5mm;
     }
     .customer {
-      font-size: 12pt;
+      font-size: 7pt;
       font-weight: bold;
       text-align: center;
-      padding: 1mm 0;
+      border-bottom: 1px dashed #999;
+      padding-bottom: 1mm;
+      margin-bottom: 1mm;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .item-name {
-      font-size: 11pt;
+      font-size: 6pt;
       font-weight: bold;
       text-align: center;
-      background: #f0f0f0;
+      background: #eee;
       padding: 1mm;
-      border-radius: 1mm;
+      margin-bottom: 1mm;
+      word-wrap: break-word;
     }
     .due-date {
-      font-size: 9pt;
+      font-size: 6pt;
       text-align: center;
-      color: #333;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
   <div class="garment-tag">
-    <div class="top-row">
+    <div class="header">
       <span class="ticket-num">#${ticketNumber || '---'}</span>
       <span class="position">${itemIndex}/${itemTotal}</span>
     </div>
@@ -823,7 +826,7 @@ function setupIpcHandlers() {
         printBackground: true,
         deviceName: BROTHER_QL800_CONFIG.printerName,
         margins: { marginType: 'none' },
-        pageSize: { width: 62000, height: 40000 } // Smaller height for garment tags
+        pageSize: { width: 30000, height: 50000 } // Compact garment tag 30mm x 50mm
       };
 
       return new Promise((resolve) => {
