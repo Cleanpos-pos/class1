@@ -1945,7 +1945,7 @@ const BackOfficePage: React.FC<{
 
     const tagData = {
       storeName: settings.store_name || tenant?.name || 'Class 1 Dry Cleaners',
-      ticketNumber: order.pos_ticket_id || order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---',
+      ticketNumber: order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---',
       customerName: order.customer_name || 'Walk-in',
       customerPhone: order.customer_phone || '',
       customerAddress: order.customer_address || '',
@@ -2011,7 +2011,7 @@ const BackOfficePage: React.FC<{
       item.total = totalItems;
     });
 
-    const ticketNumber = order.pos_ticket_id || order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---';
+    const ticketNumber = order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---';
     const customerName = order.customer_name || 'Walk-in';
     const dueDate = order.due_date ? new Date(order.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD';
 
