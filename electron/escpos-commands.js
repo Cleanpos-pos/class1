@@ -126,8 +126,8 @@ function buildGarmentTagContent(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  // Feed 6 lines before cut to clear print head to cutter gap
-  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 1 : 6;
+  // Feed 4 lines before cut - minimal gap while clearing cutter
+  const delayBeforeCut = profile?.delayBeforeCut ? Math.max(profile.delayBeforeCut - 1, 4) : 4;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
@@ -182,8 +182,8 @@ function buildGarmentTagContent40mm(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  // Feed 6 lines before cut to clear print head to cutter gap
-  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 1 : 6;
+  // Feed 4 lines before cut - minimal gap while clearing cutter
+  const delayBeforeCut = profile?.delayBeforeCut ? Math.max(profile.delayBeforeCut - 1, 4) : 4;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
@@ -326,7 +326,8 @@ function buildCustomerReceipt(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile
-  const delayBeforeCut = profile?.delayBeforeCut ?? 6;
+  // Reduce feed to minimize blank space at top of next document
+  const delayBeforeCut = profile?.delayBeforeCut ? Math.max(profile.delayBeforeCut - 1, 4) : 4;
   const fullCutCmd = profile?.commands?.fullCut
     ? Buffer.from(profile.commands.fullCut)
     : ESCPOS.CUT_PAPER;
@@ -470,8 +471,8 @@ function buildShopCopy(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile
-  // Shop copy needs more feed (11 lines) to ensure items don't get cut off
-  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 3 : 11;
+  // Shop copy needs slightly more feed than receipt (5 lines)
+  const delayBeforeCut = profile?.delayBeforeCut ?? 5;
   const fullCutCmd = profile?.commands?.fullCut
     ? Buffer.from(profile.commands.fullCut)
     : ESCPOS.CUT_PAPER;
