@@ -478,7 +478,7 @@ function generateLabelHtml(tagData) {
     }
     .barcode-section img {
       max-width: 100%;
-      height: 40px;
+      height: 80px;
     }
     .barcode-text {
       font-size: 10pt;
@@ -987,6 +987,66 @@ function setupIpcHandlers() {
     }
   });
 
+  // ============================================
+  // Printer Profile Management (like legacy MJBPrintSpooler)
+  // ============================================
+
+  // Get all available printer profiles
+  ipcMain.handle('get-printer-profiles', async () => {
+    try {
+      const printerProfiles = require('./printer-profiles');
+      const profiles = printerProfiles.getProfileSummaries();
+      return { success: true, profiles };
+    } catch (error) {
+      console.error('Error getting printer profiles:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get profile for a specific printer (checks assignment, then auto-detects)
+  ipcMain.handle('get-printer-profile', async (event, printerName) => {
+    try {
+      const profile = printerConfig.getPrinterProfile(printerName);
+      return { success: true, profile };
+    } catch (error) {
+      console.error('Error getting printer profile:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Set profile for a specific printer
+  ipcMain.handle('set-printer-profile', async (event, { printerName, profileId }) => {
+    try {
+      const result = printerConfig.setPrinterProfile(printerName, profileId);
+      return result;
+    } catch (error) {
+      console.error('Error setting printer profile:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Get all printer-to-profile mappings
+  ipcMain.handle('get-printer-profile-mappings', async () => {
+    try {
+      const mappings = printerConfig.getPrinterProfileMappings();
+      return { success: true, mappings };
+    } catch (error) {
+      console.error('Error getting profile mappings:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Clear profile for a printer (revert to auto-detect)
+  ipcMain.handle('clear-printer-profile', async (event, printerName) => {
+    try {
+      const result = printerConfig.clearPrinterProfile(printerName);
+      return result;
+    } catch (error) {
+      console.error('Error clearing printer profile:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
   // Test thermal printer
   ipcMain.handle('test-thermal-printer', async (event, printerName) => {
     try {
@@ -1056,6 +1116,29 @@ function setupIpcHandlers() {
       return result;
     } catch (error) {
       console.error('Error printing DStubs:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Print DStubs/garment tags to 40mm narrow paper
+  ipcMain.handle('print-thermal-garment-tags-40mm', async (event, tags) => {
+    try {
+      const assignments = printerConfig.loadPrinterAssignments();
+      // Use dedicated dstubsPrinter (can be 40mm narrow)
+      const printerName = assignments.dstubsPrinter;
+
+      if (!printerName) {
+        return { success: false, error: 'No DStubs printer assigned (configure in Settings)' };
+      }
+
+      if (!Array.isArray(tags) || tags.length === 0) {
+        return { success: false, error: 'No tags to print' };
+      }
+
+      const result = await windowsPrinter.printGarmentTags40mm(printerName, tags);
+      return result;
+    } catch (error) {
+      console.error('Error printing 40mm DStubs:', error);
       return { success: false, error: error.message };
     }
   });

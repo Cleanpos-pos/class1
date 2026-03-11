@@ -226,7 +226,11 @@ try {
  */
 async function testPrinter(printerName) {
   const { buildTestPrint } = require('./escpos-commands');
-  const testData = buildTestPrint(printerName);
+  const { getPrinterProfile } = require('./printer-config');
+
+  // Get printer profile for hardware-specific settings
+  const profile = getPrinterProfile(printerName);
+  const testData = buildTestPrint(printerName, profile);
   return printRawDirect(printerName, testData);
 }
 
@@ -249,7 +253,11 @@ async function openCashDrawer(printerName) {
  */
 async function printCustomerReceipt(printerName, data) {
   const { buildCustomerReceipt } = require('./escpos-commands');
-  const receiptData = buildCustomerReceipt(data);
+  const { getPrinterProfile } = require('./printer-config');
+
+  // Get printer profile for hardware-specific settings
+  const profile = getPrinterProfile(printerName);
+  const receiptData = buildCustomerReceipt(data, profile);
   return printRawDirect(printerName, receiptData);
 }
 
@@ -261,7 +269,11 @@ async function printCustomerReceipt(printerName, data) {
  */
 async function printShopCopy(printerName, data) {
   const { buildShopCopy } = require('./escpos-commands');
-  const shopData = buildShopCopy(data);
+  const { getPrinterProfile } = require('./printer-config');
+
+  // Get printer profile for hardware-specific settings
+  const profile = getPrinterProfile(printerName);
+  const shopData = buildShopCopy(data, profile);
   return printRawDirect(printerName, shopData);
 }
 
@@ -273,12 +285,35 @@ async function printShopCopy(printerName, data) {
  */
 async function printGarmentTags(printerName, tags) {
   const { buildGarmentTags } = require('./escpos-commands');
+  const { getPrinterProfile } = require('./printer-config');
 
   if (!Array.isArray(tags) || tags.length === 0) {
     return { success: false, error: 'No tags to print' };
   }
 
-  const tagBuffer = buildGarmentTags(tags);
+  // Get printer profile for hardware-specific settings (delayBeforeCut, cut commands)
+  const profile = getPrinterProfile(printerName);
+  const tagBuffer = buildGarmentTags(tags, profile);
+  return printRawDirect(printerName, tagBuffer);
+}
+
+/**
+ * Print garment tags (DStubs) to 40mm narrow paper
+ * @param {string} printerName - Windows printer name
+ * @param {Array} tags - Array of tag data objects
+ * @returns {Promise<{success: boolean, message?: string, error?: string}>}
+ */
+async function printGarmentTags40mm(printerName, tags) {
+  const { buildGarmentTags40mm } = require('./escpos-commands');
+  const { getPrinterProfile } = require('./printer-config');
+
+  if (!Array.isArray(tags) || tags.length === 0) {
+    return { success: false, error: 'No tags to print' };
+  }
+
+  // Get printer profile for hardware-specific settings (delayBeforeCut, cut commands)
+  const profile = getPrinterProfile(printerName);
+  const tagBuffer = buildGarmentTags40mm(tags, profile);
   return printRawDirect(printerName, tagBuffer);
 }
 
@@ -330,5 +365,6 @@ module.exports = {
   printCustomerReceipt,
   printShopCopy,
   printGarmentTags,
+  printGarmentTags40mm,
   printFullOrder
 };

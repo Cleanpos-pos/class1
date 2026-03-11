@@ -32,7 +32,9 @@ const DEFAULT_ASSIGNMENTS = {
   autoPrintDstubs: false,  // Auto-print DStubs on order completion
   autoPrintTags: false,    // Legacy - kept for backwards compatibility
   autoPrintBagTags: false, // Auto-print bag tags when order is RECEIVED
-  openDrawerOnPayment: true // Open cash drawer on payment
+  openDrawerOnPayment: true, // Open cash drawer on payment
+  // Printer profile mappings: { "Windows Printer Name": "profile-id" }
+  printerProfiles: {}
 };
 
 /**
@@ -122,6 +124,77 @@ function hasPrinterAssigned(purpose) {
   return !!assignments[key];
 }
 
+/**
+ * Get printer profile for a Windows printer
+ * First checks manual assignment, then auto-detects based on printer name
+ * @param {string} windowsPrinterName - Windows printer name
+ * @returns {Object} Printer profile
+ */
+function getPrinterProfile(windowsPrinterName) {
+  const { PRINTER_PROFILES, detectProfile, DEFAULT_PROFILE } = require('./printer-profiles');
+  const assignments = loadPrinterAssignments();
+
+  // Check for manually assigned profile
+  const profileId = assignments.printerProfiles?.[windowsPrinterName];
+  if (profileId && PRINTER_PROFILES[profileId]) {
+    return PRINTER_PROFILES[profileId];
+  }
+
+  // Auto-detect based on printer name
+  if (windowsPrinterName) {
+    return detectProfile(windowsPrinterName);
+  }
+
+  return DEFAULT_PROFILE;
+}
+
+/**
+ * Set printer profile for a Windows printer
+ * @param {string} windowsPrinterName - Windows printer name
+ * @param {string} profileId - Profile ID to assign
+ * @returns {{success: boolean, error?: string}}
+ */
+function setPrinterProfile(windowsPrinterName, profileId) {
+  const { PRINTER_PROFILES } = require('./printer-profiles');
+
+  // Validate profile ID
+  if (profileId && !PRINTER_PROFILES[profileId]) {
+    return { success: false, error: `Invalid profile ID: ${profileId}` };
+  }
+
+  const assignments = loadPrinterAssignments();
+  if (!assignments.printerProfiles) {
+    assignments.printerProfiles = {};
+  }
+
+  if (profileId) {
+    assignments.printerProfiles[windowsPrinterName] = profileId;
+  } else {
+    // Remove assignment to revert to auto-detection
+    delete assignments.printerProfiles[windowsPrinterName];
+  }
+
+  return savePrinterAssignments(assignments);
+}
+
+/**
+ * Get all printer profile mappings
+ * @returns {Object} Map of printer name to profile ID
+ */
+function getPrinterProfileMappings() {
+  const assignments = loadPrinterAssignments();
+  return assignments.printerProfiles || {};
+}
+
+/**
+ * Clear printer profile for a specific printer (revert to auto-detect)
+ * @param {string} windowsPrinterName - Windows printer name
+ * @returns {{success: boolean, error?: string}}
+ */
+function clearPrinterProfile(windowsPrinterName) {
+  return setPrinterProfile(windowsPrinterName, null);
+}
+
 module.exports = {
   loadPrinterAssignments,
   savePrinterAssignments,
@@ -129,5 +202,9 @@ module.exports = {
   getPrinterAssignment,
   clearPrinterAssignments,
   hasPrinterAssigned,
+  getPrinterProfile,
+  setPrinterProfile,
+  getPrinterProfileMappings,
+  clearPrinterProfile,
   DEFAULT_ASSIGNMENTS
 };

@@ -46,6 +46,25 @@ contextBridge.exposeInMainWorld('electronPrint', {
   // Set printer assignments
   setPrinterAssignments: (assignments) => ipcRenderer.invoke('set-printer-assignments', assignments),
 
+  // ========================================
+  // PRINTER PROFILES (like legacy MJBPrintSpooler)
+  // ========================================
+
+  // Get all available printer profiles
+  getPrinterProfiles: () => ipcRenderer.invoke('get-printer-profiles'),
+
+  // Get profile for a specific printer (checks manual assignment, then auto-detects)
+  getPrinterProfile: (printerName) => ipcRenderer.invoke('get-printer-profile', printerName),
+
+  // Set profile for a specific printer
+  setPrinterProfile: (printerName, profileId) => ipcRenderer.invoke('set-printer-profile', { printerName, profileId }),
+
+  // Get all printer-to-profile mappings
+  getPrinterProfileMappings: () => ipcRenderer.invoke('get-printer-profile-mappings'),
+
+  // Clear profile for a printer (revert to auto-detect)
+  clearPrinterProfile: (printerName) => ipcRenderer.invoke('clear-printer-profile', printerName),
+
   // Test thermal printer
   testThermalPrinter: (printerName) => ipcRenderer.invoke('test-thermal-printer', printerName),
 
@@ -55,8 +74,11 @@ contextBridge.exposeInMainWorld('electronPrint', {
   // Print shop copy (thermal, no prices)
   printShopCopy: (data) => ipcRenderer.invoke('print-shop-copy', data),
 
-  // Print thermal garment tags (one per item with 1/5 numbering)
+  // Print thermal garment tags (one per item with 1/5 numbering) - 76mm
   printThermalGarmentTags: (tags) => ipcRenderer.invoke('print-thermal-garment-tags', tags),
+
+  // Print thermal garment tags for 40mm narrow paper
+  printThermalGarmentTags40mm: (tags) => ipcRenderer.invoke('print-thermal-garment-tags-40mm', tags),
 
   // Print full order (receipt + shop copy + garment tags)
   printFullOrder: (data) => ipcRenderer.invoke('print-full-order', data),

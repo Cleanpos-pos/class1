@@ -111,74 +111,191 @@ function wrapText(str, width = 42) {
 }
 
 /**
- * Build DStub (garment tag) for dot-matrix printer
- * Compact format: ORDER# and position on same line, both large
- * NO separator lines - clean minimal design
+ * Build single DStub content (76mm) - NO INIT, used within batch
+ * @param {Object} data - Tag data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
  */
-function buildGarmentTag(data) {
+function buildGarmentTagContent(data, profile = null) {
   const {
     orderNumber = '',
     customerName = 'Walk-in',
     itemName = 'Item',
-    colorValue = '',
     dueDate = '',
     tagNumber = 1,
     totalTags = 1
   } = data;
 
+  // Get printer-specific settings from profile or use defaults
+  const delayBeforeCut = profile?.delayBeforeCut ?? 5;
+  const partialCutCmd = profile?.commands?.partialCut
+    ? Buffer.from(profile.commands.partialCut)
+    : ESCPOS.CUT_PARTIAL;
+
   const parts = [];
 
-  // Initialize - use PC437 codepage (# displays correctly)
-  parts.push(ESCPOS.INIT);
-  parts.push(ESCPOS.SELECT_CODEPAGE_PC437);
+  // Reset formatting for this tag (no INIT - handled by batch)
+  parts.push(ESCPOS.NORMAL_SIZE);
+  parts.push(ESCPOS.BOLD_OFF);
   parts.push(ESCPOS.ALIGN_CENTER);
-  parts.push(ESCPOS.BOLD_ON);
-
-  // Feed at top - push content past the cutter from previous cut
-  parts.push(feed(2));
 
   // Line 1: ORDER # and POSITION - LARGE (same line)
+  parts.push(ESCPOS.BOLD_ON);
   parts.push(ESCPOS.DOUBLE_SIZE);
-  parts.push(Buffer.from(`#${orderNumber} ${tagNumber}/${totalTags}\n`));
-  parts.push(ESCPOS.NORMAL_SIZE);
+  parts.push(Buffer.from(`#${orderNumber} ${tagNumber}/${totalTags}`));
+  parts.push(ESCPOS.NORMAL_SIZE); // Revert size before newline to eliminate huge 2x gap
+  parts.push(Buffer.from('\n'));
 
   // Line 2: ITEM NAME (bold, uppercase)
+  parts.push(ESCPOS.BOLD_ON);
   parts.push(ESCPOS.DOUBLE_HEIGHT);
-  parts.push(Buffer.from(itemName.toUpperCase().substring(0, 20) + '\n'));
-  parts.push(ESCPOS.NORMAL_SIZE);
+  parts.push(Buffer.from(itemName.toUpperCase().substring(0, 20)));
+  parts.push(ESCPOS.NORMAL_SIZE); // Revert size before newline to eliminate 2x gap
+  parts.push(Buffer.from('\n'));
 
   // Line 3: Customer name
   parts.push(ESCPOS.BOLD_OFF);
   parts.push(Buffer.from(customerName.substring(0, 24) + '\n'));
 
-  // Line 4: Ready by date
-  if (dueDate) {
-    parts.push(Buffer.from(`Ready: ${dueDate}\n`));
-  }
-
-  // Feed at bottom before cut - clears cutter
-  parts.push(feed(1));
-  parts.push(ESCPOS.CUT_PARTIAL);
+  // Feed lines before cut (printer-specific - from profile or default 5 for Bixolon)
+  parts.push(feed(delayBeforeCut));
+  parts.push(partialCutCmd);
 
   return Buffer.concat(parts);
 }
 
 /**
- * Build multiple garment tags as single buffer
- * Each stub gets partial cut, final full cut at end
+ * Build single DStub content (40mm) - NO INIT, used within batch
+ * @param {Object} data - Tag data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
  */
-function buildGarmentTags(tags) {
-  const buffers = tags.map(tag => buildGarmentTag(tag));
-  // Add final full cut after all stubs
-  buffers.push(ESCPOS.CUT_PAPER);
+function buildGarmentTagContent40mm(data, profile = null) {
+  const {
+    orderNumber = '',
+    customerName = 'Walk-in',
+    itemName = 'Item',
+    tagNumber = 1,
+    totalTags = 1
+  } = data;
+
+  // Get printer-specific settings from profile or use defaults
+  const delayBeforeCut = profile?.delayBeforeCut ?? 5;
+  const partialCutCmd = profile?.commands?.partialCut
+    ? Buffer.from(profile.commands.partialCut)
+    : ESCPOS.CUT_PARTIAL;
+
+  const parts = [];
+
+  // Reset formatting for this tag (no INIT - handled by batch)
+  parts.push(ESCPOS.NORMAL_SIZE);
+  parts.push(ESCPOS.BOLD_OFF);
+  parts.push(ESCPOS.ALIGN_CENTER);
+
+  // Line 1: ORDER # and POSITION
+  parts.push(ESCPOS.BOLD_ON);
+  parts.push(ESCPOS.DOUBLE_HEIGHT);
+  parts.push(Buffer.from(`#${orderNumber}`));
+  parts.push(ESCPOS.NORMAL_SIZE); // Revert before newline
+  parts.push(Buffer.from('\n'));
+
+  parts.push(ESCPOS.DOUBLE_HEIGHT);
+  parts.push(Buffer.from(`${tagNumber}/${totalTags}`));
+  parts.push(ESCPOS.NORMAL_SIZE); // Revert before newline
+  parts.push(Buffer.from('\n'));
+
+  // Line 2: ITEM NAME (abbreviated)
+  parts.push(ESCPOS.BOLD_ON);
+  parts.push(Buffer.from(itemName.toUpperCase().substring(0, 12) + '\n'));
+
+  // Line 3: Customer name (abbreviated)
+  parts.push(ESCPOS.BOLD_OFF);
+  parts.push(Buffer.from(customerName.substring(0, 12) + '\n'));
+
+  // Feed lines before cut (printer-specific - from profile or default 5 for Bixolon)
+  parts.push(feed(delayBeforeCut));
+  parts.push(partialCutCmd);
+
+  return Buffer.concat(parts);
+}
+
+/**
+ * Build DStub (garment tag) for dot-matrix printer - standalone version with INIT
+ * @param {Object} data - Tag data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
+ */
+function buildGarmentTag(data, profile = null) {
+  const parts = [];
+  parts.push(ESCPOS.INIT);
+  parts.push(ESCPOS.SELECT_CODEPAGE_PC437);
+  parts.push(buildGarmentTagContent(data, profile));
+  return Buffer.concat(parts);
+}
+
+/**
+ * Build DStub for 40mm - standalone version with INIT
+ * @param {Object} data - Tag data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
+ */
+function buildGarmentTag40mm(data, profile = null) {
+  const parts = [];
+  parts.push(ESCPOS.INIT);
+  parts.push(ESCPOS.SELECT_CODEPAGE_PC437);
+  parts.push(buildGarmentTagContent40mm(data, profile));
+  return Buffer.concat(parts);
+}
+
+/**
+ * Build multiple garment tags as single buffer (76mm)
+ * Single INIT at start, then all tags, final cut at end
+ * @param {Object[]} tags - Array of tag data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
+ */
+function buildGarmentTags(tags, profile = null) {
+  // Get printer-specific cut command from profile
+  const fullCutCmd = profile?.commands?.fullCut
+    ? Buffer.from(profile.commands.fullCut)
+    : ESCPOS.CUT_PAPER;
+
+  const buffers = [];
+  // INIT and charset only - content handles formatting
+  buffers.push(ESCPOS.INIT);
+  buffers.push(ESCPOS.SELECT_CODEPAGE_PC437);
+  // Add all tag contents (pass profile for delayBeforeCut)
+  tags.forEach(tag => buffers.push(buildGarmentTagContent(tag, profile)));
+  // Final full cut (no extra feed - tags already have feed)
+  buffers.push(fullCutCmd);
+  return Buffer.concat(buffers);
+}
+
+/**
+ * Build multiple garment tags for 40mm paper
+ * Single INIT at start, then all tags, final cut at end
+ * @param {Object[]} tags - Array of tag data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
+ */
+function buildGarmentTags40mm(tags, profile = null) {
+  // Get printer-specific cut command from profile
+  const fullCutCmd = profile?.commands?.fullCut
+    ? Buffer.from(profile.commands.fullCut)
+    : ESCPOS.CUT_PAPER;
+
+  const buffers = [];
+  // INIT and charset only - content handles formatting
+  buffers.push(ESCPOS.INIT);
+  buffers.push(ESCPOS.SELECT_CODEPAGE_PC437);
+  // Add all tag contents (pass profile for delayBeforeCut)
+  tags.forEach(tag => buffers.push(buildGarmentTagContent40mm(tag, profile)));
+  // Final full cut (no extra feed - tags already have feed)
+  buffers.push(fullCutCmd);
   return Buffer.concat(buffers);
 }
 
 /**
  * Build customer receipt (42-char width for 80mm thermal)
  * Includes items with prices and totals
+ * @param {Object} data - Receipt data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
  */
-function buildCustomerReceipt(data) {
+function buildCustomerReceipt(data, profile = null) {
   const {
     storeName = 'Dry Cleaners',
     storeAddress = '',
@@ -200,8 +317,14 @@ function buildCustomerReceipt(data) {
     footer = 'Thank you for your business!'
   } = data;
 
+  // Get printer-specific settings from profile
+  const delayBeforeCut = profile?.delayBeforeCut ?? 6;
+  const fullCutCmd = profile?.commands?.fullCut
+    ? Buffer.from(profile.commands.fullCut)
+    : ESCPOS.CUT_PAPER;
+
   const parts = [];
-  const lineWidth = 42; // 80mm thermal paper
+  const lineWidth = profile?.charsPerLine ?? 42; // Use profile or default 80mm thermal paper
 
   // Initialize
   parts.push(ESCPOS.INIT);
@@ -310,9 +433,9 @@ function buildCustomerReceipt(data) {
   parts.push(text(footer + '\n'));
   parts.push(text('\n'));
 
-  // Feed adequately AFTER all content, then cut
-  parts.push(feed(6));
-  parts.push(ESCPOS.CUT_PAPER);
+  // Feed lines before cut (printer-specific - from profile or default 6)
+  parts.push(feed(delayBeforeCut));
+  parts.push(fullCutCmd);
 
   return Buffer.concat(parts);
 }
@@ -321,8 +444,10 @@ function buildCustomerReceipt(data) {
  * Build shop copy (42-char width for 80mm thermal)
  * Same as customer receipt but WITHOUT prices
  * Includes customer contact info and notes
+ * @param {Object} data - Shop copy data
+ * @param {Object} [profile] - Printer profile for hardware-specific settings
  */
-function buildShopCopy(data) {
+function buildShopCopy(data, profile = null) {
   const {
     storeName = 'Dry Cleaners',
     orderNumber = '',
@@ -338,8 +463,14 @@ function buildShopCopy(data) {
     staff = ''
   } = data;
 
+  // Get printer-specific settings from profile
+  const delayBeforeCut = profile?.delayBeforeCut ?? 8;
+  const fullCutCmd = profile?.commands?.fullCut
+    ? Buffer.from(profile.commands.fullCut)
+    : ESCPOS.CUT_PAPER;
+
   const parts = [];
-  const lineWidth = 42;
+  const lineWidth = profile?.charsPerLine ?? 42;
 
   // Initialize
   parts.push(ESCPOS.INIT);
@@ -360,7 +491,6 @@ function buildShopCopy(data) {
   storeLines.forEach(line => parts.push(text(line + '\n')));
   parts.push(ESCPOS.NORMAL_SIZE);
   parts.push(ESCPOS.BOLD_OFF);
-  parts.push(text('\n'));
 
   // Order info (large)
   parts.push(ESCPOS.BOLD_ON);
@@ -369,8 +499,6 @@ function buildShopCopy(data) {
   parts.push(ESCPOS.NORMAL_SIZE);
   parts.push(ESCPOS.BOLD_OFF);
   parts.push(text(`${date} ${time}\n`));
-
-  parts.push(text('\n'));
 
   // Customer section
   parts.push(ESCPOS.ALIGN_LEFT);
@@ -385,8 +513,6 @@ function buildShopCopy(data) {
     const addressLines = wrapText(customerAddress, lineWidth);
     addressLines.forEach(line => parts.push(text(line + '\n')));
   }
-
-  parts.push(text('\n'));
 
   // Items (NO PRICES)
   parts.push(ESCPOS.BOLD_ON);
@@ -433,19 +559,22 @@ function buildShopCopy(data) {
     parts.push(text(`Staff: ${staff}\n`));
   }
 
-  // Feed and cut
-  parts.push(feed(6));
-  parts.push(ESCPOS.CUT_PAPER);
+  // Feed lines before cut (printer-specific - from profile or default 8)
+  parts.push(feed(delayBeforeCut));
+  parts.push(fullCutCmd);
 
   return Buffer.concat(parts);
 }
 
-/**
- * Build test print for printer verification
- */
-function buildTestPrint(printerName = 'Thermal Printer') {
+function buildTestPrint(printerName = 'Thermal Printer', profile = null) {
+  // Get printer-specific settings from profile
+  const delayBeforeCut = profile?.delayBeforeCut ?? 4;
+  const fullCutCmd = profile?.commands?.fullCut
+    ? Buffer.from(profile.commands.fullCut)
+    : ESCPOS.CUT_PAPER;
+  const lineWidth = profile?.charsPerLine ?? 42;
+
   const parts = [];
-  const lineWidth = 42;
 
   parts.push(ESCPOS.INIT);
   parts.push(ESCPOS.ALIGN_CENTER);
@@ -456,6 +585,10 @@ function buildTestPrint(printerName = 'Thermal Printer') {
 
   parts.push(text('\n'));
   parts.push(text(`Printer: ${printerName}\n`));
+  if (profile) {
+    parts.push(text(`Profile: ${profile.name}\n`));
+    parts.push(text(`Feed before cut: ${profile.delayBeforeCut} lines\n`));
+  }
   parts.push(text(`Time: ${new Date().toLocaleString()}\n`));
   parts.push(text('\n'));
 
@@ -475,8 +608,9 @@ function buildTestPrint(printerName = 'Thermal Printer') {
   parts.push(text('CleanPos - Posso One Suite\n'));
   parts.push(text('Printer test successful!\n'));
 
-  parts.push(feed(4));
-  parts.push(ESCPOS.CUT_PAPER);
+  // Feed lines before cut (printer-specific - from profile or default 4)
+  parts.push(feed(delayBeforeCut));
+  parts.push(fullCutCmd);
 
   return Buffer.concat(parts);
 }
@@ -523,6 +657,8 @@ module.exports = {
   wrapText,
   buildGarmentTag,
   buildGarmentTags,
+  buildGarmentTag40mm,
+  buildGarmentTags40mm,
   buildCustomerReceipt,
   buildShopCopy,
   buildTestPrint,
