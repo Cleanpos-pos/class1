@@ -126,7 +126,8 @@ function buildGarmentTagContent(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  const delayBeforeCut = profile?.delayBeforeCut ?? 5;
+  // DStubs need MORE feed (profile + 3, or 8 minimum) to clear print head to cutter gap
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 3 : 8;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
@@ -181,7 +182,8 @@ function buildGarmentTagContent40mm(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  const delayBeforeCut = profile?.delayBeforeCut ?? 5;
+  // DStubs need MORE feed (profile + 3, or 8 minimum) to clear print head to cutter gap
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 3 : 8;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
