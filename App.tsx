@@ -1,12 +1,17 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle, XCircle, Hash, Delete } from 'lucide-react';
 import jsQR from 'jsqr';
+// SECURITY WARNING: xlsx has known vulnerabilities (Prototype Pollution, ReDoS)
+// Consider replacing with 'exceljs' for production use
+// See: https://github.com/advisories/GHSA-4r6h-8v6p-xvw6
 import * as XLSX from 'xlsx';
 import { Page, TimeSlot, CartItem, DeliveryOption, DiscountCode } from './types';
+import { PostcodeArea, PostcodeServiceSlot } from './types/postcode';
 import { supabase } from './supabaseClient';
 import { sendOrderConfirmation, sendBrevoEmail, sendCustomerSignupNotification } from './services/emailService';
 import DeliveryMap from './components/DeliveryMap';
 import { hashPassword, verifyPassword } from './utils/passwordUtils';
+import logger from './utils/logger';
 
 const formatPrice = (price: number | string) => {
   const num = typeof price === 'string' ? parseFloat(price) : price;
@@ -1233,9 +1238,23 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
 
     if (isSignUp) {
       if (!name || !phone || !email || !password) { setError('All fields are required.'); setLoading(false); return; }
-      const { data: existingUser } = await supabase.from('cp_customers').select('id').eq('email', email).eq('tenant_id', tenantId).single();
+      // Validate email format
+      const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+      if (!emailRegex.test(email) || email.length > 254) { setError('Invalid email format.'); setLoading(false); return; }
+      // Validate password strength
+      if (password.length < 8) { setError('Password must be at least 8 characters.'); setLoading(false); return; }
+      const { data: existingUser } = await supabase.from('cp_customers').select('id').eq('email', email.toLowerCase().trim()).eq('tenant_id', tenantId).single();
       if (existingUser) { setError('Email already registered.'); setLoading(false); return; }
-      const { data, error: insertError } = await supabase.from('cp_customers').insert([{ name, email, phone, password, loyalty_points: 0, tenant_id: tenantId }]).select().single();
+      // Hash password before storing
+      const hashedPassword = await hashPassword(password);
+      const { data, error: insertError } = await supabase.from('cp_customers').insert([{
+        name: name.trim().slice(0, 100),
+        email: email.toLowerCase().trim(),
+        phone: phone.trim().slice(0, 20),
+        password: hashedPassword,
+        loyalty_points: 0,
+        tenant_id: tenantId
+      }]).select().single();
       if (insertError || !data) {
         setError('Failed to create account.');
       } else {
@@ -1244,7 +1263,7 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
         onClose();
       }
     } else {
-      const { data, error } = await supabase.from('cp_customers').select('*').eq('email', email).eq('tenant_id', tenantId).single();
+      const { data, error } = await supabase.from('cp_customers').select('*').eq('email', email.toLowerCase().trim()).eq('tenant_id', tenantId).single();
       if (error || !data) {
         // Check if this is an admin account to guide them
         const { data: staff } = await supabase.from('staff').select('id').eq('login_id', email.toLowerCase()).eq('tenant_id', tenantId).maybeSingle();
@@ -1253,11 +1272,15 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
         } else {
           setError('Account not found.');
         }
-      } else if (data.password !== password) {
-        setError('Incorrect password.');
       } else {
-        onLogin(data);
-        onClose();
+        // Verify password using bcrypt
+        const isValidPassword = await verifyPassword(password, data.password);
+        if (!isValidPassword) {
+          setError('Incorrect password.');
+        } else {
+          onLogin(data);
+          onClose();
+        }
       }
     }
     setLoading(false);
@@ -1367,7 +1390,7 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
         .order('created_at', { ascending: false });
 
       if (orderError) {
-        console.error('Error fetching order history:', orderError);
+        logger.error('Error fetching order history:', orderError);
       } else if (orderData) {
         setOrders(orderData);
       }
@@ -1465,7 +1488,7 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
       setTimeout(() => setMsg(''), 3000);
     } else {
       setMsg('Save failed. Run SQL update script.');
-      console.error(error);
+      logger.error(error);
     }
     setSaving(false);
   };
@@ -1895,7 +1918,7 @@ const BackOfficePage: React.FC<{
       });
 
       if (error) {
-        console.error('Edge Function error:', error);
+        logger.error('Edge Function error:', error);
         alert('Stripe Connect error: ' + (error.message || 'Unknown error'));
       } else if (data?.url) {
         window.location.href = data.url;
@@ -1924,7 +1947,7 @@ const BackOfficePage: React.FC<{
     }).join('<br>');
 
     // Debug: log item structure
-    console.log('Print tag items:', JSON.stringify(items, null, 2));
+    logger.debug('Print tag items:', JSON.stringify(items, null, 2));
 
     // Calculate piece count - 2pc suit = 2 pieces, 3pc suit = 3 pieces, etc.
     const calculatePieces = (item: any) => {
@@ -1944,18 +1967,19 @@ const BackOfficePage: React.FC<{
     const totalPieces = items.reduce((sum: number, i: any) => sum + calculatePieces(i), 0);
 
     const tagData = {
-      storeName: settings.store_name || tenant?.name || 'Class 1 Dry Cleaners',
       ticketNumber: order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---',
       customerName: order.customer_name || 'Walk-in',
       customerPhone: order.customer_phone || '',
       customerAddress: order.customer_address || '',
+      // Store info for Btag (bag tag)
+      storeName: settings.store_name || '',
+      storeAddress: settings.store_address || '',
       itemCount: totalPieces,
       items: items.map((i: any) => `${i.quantity || 1}x ${i.item_name || i.name || i.service_name || 'Item'}`).join(', '),
       itemsSummary: itemsSummary,
       dueDate: order.due_date ? new Date(order.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD',
       notes: order.notes || '',
-      orderId: order.id,
-      qrData: order.readable_id || order.pos_ticket_id || order.id // QR code contains readable order ID for scanning
+      orderId: order.id
     };
 
     // Check if running in Electron
@@ -1980,8 +2004,9 @@ const BackOfficePage: React.FC<{
     }
   };
 
-  // Print Garment Tags - one tag per item with 1/5, 2/5 format
-  const printGarmentTags = async (order: any) => {
+  // Print DStubs - one stub per item with 1/5, 2/5 format
+  // Uses Bixolon dot-matrix 76mm printer for DStubs
+  const printDStubs = async (order: any) => {
     let items: any[] = [];
     try {
       items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
@@ -1990,16 +2015,31 @@ const BackOfficePage: React.FC<{
     }
 
     if (items.length === 0) {
-      showPrintToast('warning', 'No items to print garment tags for');
+      showPrintToast('warning', 'No items to print DStubs for');
       return;
     }
 
-    // Expand items based on quantity (3x Shirt = 3 separate tags)
+    // Expand items based on stub count
+    // Priority: item.stub_count > item.stubbs > parse "Xpc" from name > default 1
     const expandedItems: { name: string; index: number; total: number }[] = [];
     items.forEach((item: any) => {
       const qty = item.quantity || 1;
       const name = item.item_name || item.name || item.service_name || 'Item';
-      for (let i = 0; i < qty; i++) {
+
+      // Get stub count per item (from field or parse from name)
+      let stubsPerItem = item.stub_count || item.stubbs || 1;
+
+      // If no explicit stub count, check for Xpc pattern (2pc, 3pc, etc.)
+      if (stubsPerItem === 1) {
+        const pcMatch = name.toLowerCase().match(/(\d+)\s*pc/);
+        if (pcMatch) {
+          stubsPerItem = parseInt(pcMatch[1]);
+        }
+      }
+
+      // Total stubs = quantity * stubs per item
+      const totalStubs = qty * stubsPerItem;
+      for (let i = 0; i < totalStubs; i++) {
         expandedItems.push({ name, index: 0, total: 0 });
       }
     });
@@ -2014,70 +2054,130 @@ const BackOfficePage: React.FC<{
     const ticketNumber = order.readable_id || order.id?.slice(-6)?.toUpperCase() || '---';
     const customerName = order.customer_name || 'Walk-in';
     const dueDate = order.due_date ? new Date(order.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : 'TBD';
+    const storeName = settings.store_name || 'Dry Cleaners';
 
-    // Print each garment tag
+    // Print DStubs to Bixolon dot-matrix printer (76mm)
     if ((window as any).electronPrint) {
-      for (let i = 0; i < expandedItems.length; i++) {
-        const item = expandedItems[i];
-        const garmentTagData = {
-          ticketNumber,
-          customerName,
-          dueDate,
-          itemName: item.name,
-          itemIndex: item.index,
-          itemTotal: item.total,
-          isGarmentTag: true
-        };
+      try {
+        const assignmentsResult = await (window as any).electronPrint.getPrinterAssignments();
+        const hasDstubsPrinter = assignmentsResult?.assignments?.dstubsPrinter;
 
-        // Small delay between prints to avoid overwhelming the printer
-        await new Promise(resolve => setTimeout(resolve, 300));
-        await (window as any).electronPrint.printGarmentTag(garmentTagData);
+        if (hasDstubsPrinter) {
+          // Use Bixolon dot-matrix printer (ESC/POS)
+          const dstubTags = expandedItems.map(item => ({
+            orderNumber: ticketNumber,
+            customerName,
+            itemName: item.name,
+            dueDate,
+            tagNumber: item.index,
+            totalTags: item.total
+          }));
+
+          const result = await (window as any).electronPrint.printThermalGarmentTags(dstubTags);
+          if (result.success) {
+            showPrintToast('success', `${expandedItems.length} DStubs sent to dot-matrix!`);
+            return;
+          }
+          showPrintToast('error', 'DStub print failed: ' + (result.error || 'Unknown error'));
+          return;
+        } else {
+          showPrintToast('warning', 'No DStubs printer assigned. Go to Settings to configure Bixolon 76mm.');
+          return;
+        }
+      } catch (e) {
+        logger.error('DStub print error:', e);
+        showPrintToast('error', 'Failed to print DStubs');
       }
-      showPrintToast('success', `${expandedItems.length} garment tags sent to printer!`);
     } else {
-      // Browser fallback - open single window with all tags
-      const printWindow = window.open('', '_blank', 'width=300,height=600');
-      if (printWindow) {
-        const tagsHtml = expandedItems.map(item => `
-          <div class="garment-tag" style="page-break-after: always;">
-            <div class="header">
-              <span class="ticket-num">#${ticketNumber}</span>
-              <span class="position">${item.index}/${item.total}</span>
-            </div>
-            <div class="customer">${customerName}</div>
-            <div class="item-name">${item.name}</div>
-            <div class="due-date">Due: ${dueDate}</div>
-          </div>
-        `).join('');
+      // Browser mode - DStubs require desktop app with Bixolon dot-matrix
+      showPrintToast('warning', 'DStubs require desktop app with Bixolon dot-matrix printer');
+    }
+  };
 
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <title>Garment Tags - #${ticketNumber}</title>
-            <style>
-              * { margin: 0; padding: 0; box-sizing: border-box; }
-              @page { size: 30mm 50mm; margin: 0; }
-              body { font-family: Arial, sans-serif; }
-              .garment-tag {
-                width: 30mm; height: 48mm; padding: 1mm;
-                border: 1.5px solid #000; margin-bottom: 2mm;
-              }
-              .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; padding-bottom: 0.5mm; margin-bottom: 1mm; }
-              .ticket-num { font-size: 8pt; font-weight: bold; }
-              .position { font-size: 10pt; font-weight: bold; background: #000; color: #fff; padding: 0.5mm 1.5mm; }
-              .customer { font-size: 7pt; font-weight: bold; text-align: center; border-bottom: 1px dashed #999; padding-bottom: 1mm; margin-bottom: 1mm; }
-              .item-name { font-size: 6pt; font-weight: bold; text-align: center; background: #eee; padding: 1mm; margin-bottom: 1mm; }
-              .due-date { font-size: 6pt; text-align: center; font-weight: bold; }
-            </style>
-          </head>
-          <body>${tagsHtml}</body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.print();
-        showPrintToast('success', 'Garment tags print preview opened');
+  // Print thermal receipts (customer receipt + shop copy)
+  const printOrderReceipts = async (order: any, options: { customerReceipt?: boolean; shopCopy?: boolean } = { customerReceipt: true, shopCopy: true }) => {
+    if (!(window as any).electronPrint) {
+      showPrintToast('warning', 'Thermal printing only available in desktop app');
+      return;
+    }
+
+    try {
+      // Check if thermal printer is assigned
+      const assignmentsResult = await (window as any).electronPrint.getPrinterAssignments();
+      if (!assignmentsResult?.assignments?.receiptPrinter) {
+        showPrintToast('warning', 'No receipt printer assigned. Go to Settings to configure.');
+        return;
       }
+
+      // Parse items
+      let items: any[] = [];
+      try {
+        items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
+      } catch (e) {
+        items = [];
+      }
+
+      // Calculate totals
+      const subtotal = items.reduce((sum: number, item: any) => {
+        const price = item.unit_price || item.price || 0;
+        const qty = item.quantity || 1;
+        return sum + (price * qty);
+      }, 0);
+      const discount = order.discount_amount || 0;
+      const total = order.total || (subtotal - discount);
+
+      const receiptData = {
+        storeName: settings.store_name || 'Dry Cleaners',
+        storeAddress: settings.store_address || '',
+        storePhone: settings.store_phone || '',
+        orderNumber: order.readable_id || order.id?.slice(-6)?.toUpperCase() || '',
+        customerName: order.customer_name || 'Walk-in',
+        customerPhone: order.customer_phone || '',
+        customerAddress: order.customer_address || '',
+        date: new Date(order.created_at).toLocaleDateString('en-GB'),
+        time: new Date(order.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        dueDate: order.due_date ? new Date(order.due_date).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }) : '',
+        items: items.map((item: any) => ({
+          name: item.item_name || item.name || item.service_name || 'Item',
+          quantity: item.quantity || 1,
+          price: item.unit_price || item.price || 0,
+          note: item.note || ''
+        })),
+        itemCount: items.reduce((sum: number, item: any) => sum + (item.quantity || 1), 0),
+        subtotal,
+        discount,
+        discountLabel: order.discount_code ? `Discount (${order.discount_code})` : 'Discount',
+        total,
+        paymentMethod: order.payment_method || 'Cash',
+        amountPaid: order.amount_paid || total,
+        change: order.change_given || 0,
+        notes: order.notes || '',
+        staff: order.staff_name || ''
+      };
+
+      // Print customer receipt
+      if (options.customerReceipt) {
+        const result = await (window as any).electronPrint.printCustomerReceipt(receiptData);
+        if (!result.success) {
+          logger.error('Failed to print customer receipt:', result.error);
+        }
+      }
+
+      // Print shop copy
+      if (options.shopCopy) {
+        const result = await (window as any).electronPrint.printShopCopy(receiptData);
+        if (!result.success) {
+          logger.error('Failed to print shop copy:', result.error);
+        }
+      }
+
+      const printed = [];
+      if (options.customerReceipt) printed.push('customer receipt');
+      if (options.shopCopy) printed.push('shop copy');
+      showPrintToast('success', `Printed: ${printed.join(' & ')}`);
+    } catch (error) {
+      logger.error('Error printing receipts:', error);
+      showPrintToast('error', 'Failed to print receipts');
     }
   };
 
@@ -2139,75 +2239,38 @@ const BackOfficePage: React.FC<{
     </html>
   `;
 
-  // QR Scanner functions
-  const startQRScanner = async () => {
+  // Tag Scanner functions (for handheld barcode scanner)
+  const [scannerInput, setScannerInput] = useState('');
+  const scannerInputRef = useRef<HTMLInputElement>(null);
+
+  const startQRScanner = () => {
+    setScannerInput('');
     setShowQRScanner(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        requestAnimationFrame(scanQRCode);
-      }
-    } catch (err) {
-      alert('Could not access camera. Please check permissions.');
-      setShowQRScanner(false);
-    }
+    // Auto-focus the input after modal opens
+    setTimeout(() => scannerInputRef.current?.focus(), 100);
   };
 
   const stopQRScanner = () => {
-    if (videoRef.current?.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach(track => track.stop());
-    }
+    setScannerInput('');
     setShowQRScanner(false);
   };
 
-  const scanQRCode = async () => {
-    if (!showQRScanner || !videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    if (video.readyState === video.HAVE_ENOUGH_DATA && ctx) {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Use jsQR library for reliable QR scanning
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert',
-      });
-
-      if (code) {
-        await loadScannedOrder(code.data);
-        stopQRScanner();
-        return;
-      }
-
-      // Fallback: Try BarcodeDetector API if available
-      if ('BarcodeDetector' in window) {
-        try {
-          const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
-          const barcodes = await detector.detect(canvas);
-          if (barcodes.length > 0) {
-            const orderId = barcodes[0].rawValue;
-            await loadScannedOrder(orderId);
-            stopQRScanner();
-            return;
-          }
-        } catch (e) {
-          // BarcodeDetector failed, continue scanning
-        }
-      }
-    }
-
-    if (showQRScanner) {
-      requestAnimationFrame(scanQRCode);
+  const handleScannerInput = async (value: string) => {
+    setScannerInput(value);
+    // Auto-search when input looks like a valid order ID (4+ chars)
+    if (value.length >= 4) {
+      await loadScannedOrder(value);
     }
   };
+
+  const handleScannerKeyDown = async (e: React.KeyboardEvent) => {
+    // Handheld scanners typically send Enter after scanning
+    if (e.key === 'Enter' && scannerInput.trim()) {
+      e.preventDefault();
+      await loadScannedOrder(scannerInput.trim());
+    }
+  };
+
 
   const loadScannedOrder = async (orderId: string) => {
     try {
@@ -2260,7 +2323,7 @@ const BackOfficePage: React.FC<{
         .select('*')
         .eq('order_id', data.id);
 
-      console.log('Order items query:', { orderId: data.id, items: orderItems, error: itemsError });
+      logger.debug('Order items query:', { orderId: data.id, items: orderItems, error: itemsError });
 
       // Attach items to order
       if (orderItems && orderItems.length > 0) {
@@ -2268,12 +2331,12 @@ const BackOfficePage: React.FC<{
       }
 
       // Debug: log order data to check items
-      console.log('Scanned order data:', { id: data.id, items: data.items, itemCount: data.items?.length });
+      logger.debug('Scanned order data:', { id: data.id, items: data.items, itemCount: data.items?.length });
 
       setScannedOrder(data);
       setShowScannedOrderModal(true);
     } catch (err) {
-      console.error('Error loading order:', err);
+      logger.error('Error loading order:', err);
       alert('Error loading order');
     }
   };
@@ -2292,6 +2355,23 @@ const BackOfficePage: React.FC<{
     };
     loadServices();
   }, [tenant.id]);
+
+  // Load thermal printer assignments on mount (Electron only)
+  useEffect(() => {
+    const loadThermalPrinterAssignments = async () => {
+      if ((window as any).electronPrint?.getPrinterAssignments) {
+        try {
+          const result = await (window as any).electronPrint.getPrinterAssignments();
+          if (result.success && result.assignments) {
+            setThermalPrinterAssignments(result.assignments);
+          }
+        } catch (e) {
+          logger.debug('Could not load thermal printer assignments:', e);
+        }
+      }
+    };
+    loadThermalPrinterAssignments();
+  }, []);
 
   // Confirmation modal handlers
   const showDeleteConfirm = (type: 'service' | 'category' | 'all', id?: string, name?: string) => {
@@ -2321,7 +2401,7 @@ const BackOfficePage: React.FC<{
         .select();
 
       if (servicesError) {
-        console.error('Error deleting services:', servicesError);
+        logger.error('Error deleting services:', servicesError);
         return;
       }
 
@@ -2332,15 +2412,15 @@ const BackOfficePage: React.FC<{
         .select();
 
       if (categoriesError) {
-        console.error('Error deleting categories:', categoriesError);
+        logger.error('Error deleting categories:', categoriesError);
         return;
       }
 
-      console.log(`Deleted ${deletedServices?.length || 0} services and ${deletedCategories?.length || 0} categories`);
+      logger.debug(`Deleted ${deletedServices?.length || 0} services and ${deletedCategories?.length || 0} categories`);
       setServices([]);
       setCategories([]);
     } catch (err: any) {
-      console.error('Unexpected error:', err);
+      logger.error('Unexpected error:', err);
     }
   };
 
@@ -2454,6 +2534,8 @@ const BackOfficePage: React.FC<{
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [settings, setSettings] = useState<any>({});
   const [printerSettings, setPrinterSettings] = useState<any>({ printerName: '', defaultTagCount: 1, availablePrinters: [] });
+  const [thermalPrinters, setThermalPrinters] = useState<any[]>([]);
+  const [thermalPrinterAssignments, setThermalPrinterAssignments] = useState<any>({ receiptPrinter: null, tagPrinter: null, labelPrinter: null });
   const [tenantForm, setTenantForm] = useState(tenant);
   const [promotions, setPromotions] = useState<any[]>([]);
   const [bogoForm, setBogoForm] = useState<any>({ type: 'bogo', active: true, buy_qty: 3, get_qty: 1, included_items: [] });
@@ -2482,10 +2564,25 @@ const BackOfficePage: React.FC<{
   const [newCorporate, setNewCorporate] = useState({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30 });
   const [editingCorporate, setEditingCorporate] = useState<any>(null);
 
+  // Postcode Service Areas
+  const [postcodeAreas, setPostcodeAreas] = useState<PostcodeArea[]>([]);
+  const [postcodeSlots, setPostcodeSlots] = useState<PostcodeServiceSlot[]>([]);
+  const [editingPostcodeArea, setEditingPostcodeArea] = useState<PostcodeArea | null>(null);
+  const [isAddingPostcodeArea, setIsAddingPostcodeArea] = useState(false);
+  const [newPostcodeArea, setNewPostcodeArea] = useState({ area_name: '', postcode_prefixes: '', surcharge_gbp: 0, is_active: true });
+  const [addingSlotForArea, setAddingSlotForArea] = useState<string | null>(null);
+  const [newSlot, setNewSlot] = useState({ service_type: 'collection' as 'collection' | 'delivery', day_of_week: 1, start_time: '09:00', end_time: '12:00', max_bookings: 10 });
+  const [expandedAreaId, setExpandedAreaId] = useState<string | null>(null);
+  const [areaScheduleTab, setAreaScheduleTab] = useState<'collection' | 'delivery'>('collection');
+  const [scheduleTab, setScheduleTab] = useState<'collection' | 'delivery'>('collection');
+  const [newSlotTimes2, setNewSlotTimes2] = useState<Record<string, string>>({});
+  const [deliverySlotTimes, setDeliverySlotTimes] = useState<Record<string, string>>({});
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
   // Enhanced category syncing - ensure all categories used in services exist in the categories table
   const syncCategories = async () => {
     if (services.length === 0) {
-      console.log('No services to sync categories from');
+      logger.debug('No services to sync categories from');
       return;
     }
 
@@ -2493,10 +2590,10 @@ const BackOfficePage: React.FC<{
     const existingCatNames = categories.map(c => c.name);
     const toCreate = usedCatNames.filter(name => !existingCatNames.includes(name));
 
-    console.log('Category sync check:', { usedCatNames, existingCatNames, toCreate });
+    logger.debug('Category sync check:', { usedCatNames, existingCatNames, toCreate });
 
     if (toCreate.length > 0) {
-      console.log('Syncing missing categories:', toCreate);
+      logger.debug('Syncing missing categories:', toCreate);
 
       // Insert categories one by one, update tenant_id if already exists
       let successCount = 0;
@@ -2522,13 +2619,13 @@ const BackOfficePage: React.FC<{
             .select();
 
           if (insertError) {
-            console.error(`Error syncing category "${name}":`, insertError);
+            logger.error(`Error syncing category "${name}":`, insertError);
           } else {
-            console.log(`Category "${name}" inserted:`, inserted);
+            logger.debug(`Category "${name}" inserted:`, inserted);
             successCount++;
           }
         } else if (updated && updated.length > 0) {
-          console.log(`Category "${name}" updated to tenant:`, updated);
+          logger.debug(`Category "${name}" updated to tenant:`, updated);
           successCount++;
         } else {
           // No rows updated means it doesn't exist, insert it
@@ -2542,18 +2639,18 @@ const BackOfficePage: React.FC<{
             .select();
 
           if (insertError) {
-            console.error(`Error inserting category "${name}":`, insertError);
+            logger.error(`Error inserting category "${name}":`, insertError);
           } else {
-            console.log(`Category "${name}" inserted:`, inserted);
+            logger.debug(`Category "${name}" inserted:`, inserted);
             successCount++;
           }
         }
       }
 
-      console.log(`Synced ${successCount} of ${toCreate.length} categories`);
+      logger.debug(`Synced ${successCount} of ${toCreate.length} categories`);
       fetchCategories();
     } else {
-      console.log('All categories already synced');
+      logger.debug('All categories already synced');
     }
   };
 
@@ -2566,12 +2663,12 @@ const BackOfficePage: React.FC<{
   const [isRedeeming, setIsRedeeming] = useState(false);
 
   useEffect(() => {
-    fetchOrders(); fetchDrivers(); fetchSettings(); fetchServices(); fetchCategories(); fetchCustomers(); fetchPromotions(); fetchEmailTemplates(); fetchDiscountCodes();
+    fetchOrders(); fetchDrivers(); fetchSettings(); fetchServices(); fetchCategories(); fetchCustomers(); fetchPromotions(); fetchEmailTemplates(); fetchDiscountCodes(); fetchPostcodeAreas(); fetchPostcodeSlots();
   }, []);
 
   // Real-time subscription for order updates
   useEffect(() => {
-    console.log('--- SETTING UP REALTIME SUBSCRIPTION FOR ORDERS ---');
+    logger.debug('--- SETTING UP REALTIME SUBSCRIPTION FOR ORDERS ---');
 
     // Subscribe to changes in the cp_orders table
     const ordersSubscription = supabase
@@ -2583,8 +2680,29 @@ const BackOfficePage: React.FC<{
           schema: 'public',
           table: 'cp_orders'
         },
-        (payload) => {
-          console.log('Order change detected:', payload);
+        async (payload) => {
+          logger.debug('Order change detected:', payload);
+
+          // Auto-print bag tags on INSERT if enabled and in Electron
+          if (payload.eventType === 'INSERT' && (window as any).electronPrint) {
+            try {
+              const assignments = await (window as any).electronPrint.getPrinterAssignments();
+              if (assignments?.assignments?.autoPrintBagTags) {
+                const newOrder = payload.new as any;
+                // Use default_tag_count from settings (default 1)
+                const tagCount = settings?.default_tag_count || 1;
+                logger.debug(`Auto-printing ${tagCount} bag tag(s) for new order:`, newOrder.readable_id);
+
+                for (let i = 0; i < tagCount; i++) {
+                  await printOrderTag(newOrder);
+                }
+                showPrintToast('success', `${tagCount} bag tag(s) auto-printed for Order #${newOrder.readable_id || newOrder.id?.slice(-6)}`);
+              }
+            } catch (err) {
+              logger.error('Auto-print bag tags error:', err);
+            }
+          }
+
           // Refresh orders when any change occurs
           fetchOrders();
         }
@@ -2593,10 +2711,10 @@ const BackOfficePage: React.FC<{
 
     // Cleanup subscription on unmount
     return () => {
-      console.log('--- CLEANING UP REALTIME SUBSCRIPTION ---');
+      logger.debug('--- CLEANING UP REALTIME SUBSCRIPTION ---');
       supabase.removeChannel(ordersSubscription);
     };
-  }, []);
+  }, [settings]);
 
   const fetchEmailTemplates = async () => { const { data } = await supabase.from('cp_email_templates').select('*').eq('tenant_id', tenant.id); if (data && data.length > 0) { setEmailTemplates(data); if (!selectedTemplateId) setSelectedTemplateId(data[0].id); } };
   const fetchPromotions = async () => { const { data } = await supabase.from('cp_promotions').select('*').eq('tenant_id', tenant.id); if (data) setPromotions(data); };
@@ -2607,18 +2725,18 @@ const BackOfficePage: React.FC<{
     try {
       const { data, error } = await supabase.from('cp_services').select('*').eq('tenant_id', tenant.id).order('category');
       if (error) {
-        console.error('Error fetching services:', error);
+        logger.error('Error fetching services:', error);
         alert('Failed to refresh services list: ' + error.message);
       } else if (data) {
         setServices(data);
         setAvailableServices(data);
       }
     } catch (err: any) {
-      console.error('Unexpected error in fetchServices:', err);
+      logger.error('Unexpected error in fetchServices:', err);
     }
   };
   const fetchOrders = async () => {
-    console.log('--- FETCHING ORDERS FOR BACK OFFICE ---');
+    logger.debug('--- FETCHING ORDERS FOR BACK OFFICE ---');
     const { data, error } = await supabase
       .from('cp_orders')
       .select('*, items:cp_order_items(*)')
@@ -2626,16 +2744,103 @@ const BackOfficePage: React.FC<{
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching orders:', error);
+      logger.error('Error fetching orders:', error);
       setFetchError(error.message);
     } else {
-      console.log('Orders fetched for Back Office:', data?.length || 0);
+      logger.debug('Orders fetched for Back Office:', data?.length || 0);
       setOrders(data || []);
       setFetchError(null);
     }
   };
   const fetchDrivers = async () => { const { data } = await supabase.from('cp_drivers').select('*').eq('tenant_id', tenant.id); if (data) setDrivers(data); };
   const fetchDiscountCodes = async () => { const { data } = await supabase.from('cp_discount_codes').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }); if (data) setDiscountCodes(data); };
+
+  // Postcode Areas CRUD
+  const fetchPostcodeAreas = async () => {
+    const { data } = await supabase.from('cp_postcode_areas').select('*').eq('tenant_id', tenant.id).order('area_name');
+    if (data) setPostcodeAreas(data);
+  };
+
+  const fetchPostcodeSlots = async () => {
+    const { data } = await supabase.from('cp_postcode_service_slots').select('*');
+    if (data) setPostcodeSlots(data);
+  };
+
+  const savePostcodeArea = async () => {
+    const prefixesArray = newPostcodeArea.postcode_prefixes.split(',').map(p => p.trim().toUpperCase()).filter(Boolean);
+    if (!newPostcodeArea.area_name || prefixesArray.length === 0) {
+      alert('Please enter area name and at least one postcode prefix');
+      return;
+    }
+    const areaData = {
+      tenant_id: tenant.id,
+      area_name: newPostcodeArea.area_name,
+      postcode_prefixes: prefixesArray,
+      surcharge_gbp: newPostcodeArea.surcharge_gbp || 0,
+      is_active: newPostcodeArea.is_active
+    };
+    if (editingPostcodeArea) {
+      const { error } = await supabase.from('cp_postcode_areas').update(areaData).eq('id', editingPostcodeArea.id);
+      if (error) { alert('Error updating area: ' + error.message); return; }
+    } else {
+      const { error } = await supabase.from('cp_postcode_areas').insert([areaData]);
+      if (error) { alert('Error creating area: ' + error.message); return; }
+    }
+    setNewPostcodeArea({ area_name: '', postcode_prefixes: '', surcharge_gbp: 0, is_active: true });
+    setEditingPostcodeArea(null);
+    setIsAddingPostcodeArea(false);
+    fetchPostcodeAreas();
+  };
+
+  const deletePostcodeArea = async (id: string) => {
+    if (!confirm('Delete this postcode area and all its slots?')) return;
+    await supabase.from('cp_postcode_areas').delete().eq('id', id);
+    fetchPostcodeAreas();
+    fetchPostcodeSlots();
+  };
+
+  const savePostcodeSlot = async () => {
+    if (!addingSlotForArea) return;
+    const slotData = {
+      postcode_area_id: addingSlotForArea,
+      service_type: newSlot.service_type,
+      day_of_week: newSlot.day_of_week,
+      start_time: newSlot.start_time,
+      end_time: newSlot.end_time,
+      max_bookings: newSlot.max_bookings,
+      is_active: true
+    };
+    const { error } = await supabase.from('cp_postcode_service_slots').insert([slotData]);
+    if (error) { alert('Error adding slot: ' + error.message); return; }
+    setAddingSlotForArea(null);
+    setNewSlot({ service_type: 'collection', day_of_week: 1, start_time: '09:00', end_time: '12:00', max_bookings: 10 });
+    fetchPostcodeSlots();
+  };
+
+  const deletePostcodeSlot = async (id: string) => {
+    await supabase.from('cp_postcode_service_slots').delete().eq('id', id);
+    fetchPostcodeSlots();
+  };
+
+  // Add slot inline by day
+  const addSlotToAreaDay = async (areaId: string, serviceType: 'collection' | 'delivery', dayOfWeek: number, timeStr: string) => {
+    if (!timeStr || !timeStr.includes('-')) return;
+    const [start, end] = timeStr.split('-').map(t => t.trim());
+    if (!start || !end) return;
+    const slotData = {
+      postcode_area_id: areaId,
+      service_type: serviceType,
+      day_of_week: dayOfWeek,
+      start_time: start.includes(':') ? start : `${start}:00`,
+      end_time: end.includes(':') ? end : `${end}:00`,
+      max_bookings: 10,
+      is_active: true
+    };
+    const { error } = await supabase.from('cp_postcode_service_slots').insert([slotData]);
+    if (error) { alert('Error adding slot: ' + error.message); return; }
+    setNewSlotTimes2({});
+    fetchPostcodeSlots();
+  };
 
   const handleMoveCategory = async (fromIndex: number, toIndex: number) => {
     if (sortLocked) return;
@@ -2655,7 +2860,7 @@ const BackOfficePage: React.FC<{
         .eq('name', cat.name)
         .eq('tenant_id', tenant.id);
       if (error) {
-        console.error('Error saving order:', error);
+        logger.error('Error saving order:', error);
         hasError = true;
         break;
       }
@@ -2675,7 +2880,7 @@ const BackOfficePage: React.FC<{
   };
 
   const executeDeleteCategory = async (categoryName: string) => {
-    console.log(`Deleting category "${categoryName}" and its services for tenant ${tenant.id}`);
+    logger.debug(`Deleting category "${categoryName}" and its services for tenant ${tenant.id}`);
     try {
       // First delete all services in this category
       const { data: deletedServices, error: servicesError } = await supabase
@@ -2686,9 +2891,9 @@ const BackOfficePage: React.FC<{
         .select();
 
       if (servicesError) {
-        console.error('Delete services error:', servicesError);
+        logger.error('Delete services error:', servicesError);
       } else {
-        console.log(`Deleted ${deletedServices?.length || 0} services from category "${categoryName}"`);
+        logger.debug(`Deleted ${deletedServices?.length || 0} services from category "${categoryName}"`);
         setServices(services.filter(s => s.category !== categoryName));
       }
 
@@ -2701,13 +2906,13 @@ const BackOfficePage: React.FC<{
         .select();
 
       if (error) {
-        console.error('Delete category error:', error);
+        logger.error('Delete category error:', error);
       } else {
-        console.log('Delete category successful');
+        logger.debug('Delete category successful');
         setCategories(categories.filter(c => c.name !== categoryName));
       }
     } catch (err: any) {
-      console.error('Unexpected error during category delete:', err);
+      logger.error('Unexpected error during category delete:', err);
     }
   };
 
@@ -2919,7 +3124,7 @@ const BackOfficePage: React.FC<{
       }
       setVoucherCode('');
     } catch (err: any) {
-      console.error('Redeem error:', err);
+      logger.error('Redeem error:', err);
       alert('Error redeeming voucher: ' + err.message);
     } finally {
       setIsRedeeming(false);
@@ -2946,7 +3151,7 @@ const BackOfficePage: React.FC<{
       alert('Failed to save category: ' + error.message);
     } else {
       // Update all services in this category to new name
-      console.log(`Updating services from category "${oldName}" to "${newName}"`);
+      logger.debug(`Updating services from category "${oldName}" to "${newName}"`);
       await supabase.from('cp_services')
         .update({ category: newName })
         .eq('category', oldName)
@@ -2964,7 +3169,7 @@ const BackOfficePage: React.FC<{
 
   const executeDeleteService = async (id: string) => {
     try {
-      console.log(`Deleting service ${id} for tenant ${tenant.id}`);
+      logger.debug(`Deleting service ${id} for tenant ${tenant.id}`);
       const { data, error } = await supabase.from('cp_services')
         .delete()
         .eq('id', id)
@@ -2972,13 +3177,13 @@ const BackOfficePage: React.FC<{
         .select();
 
       if (error) {
-        console.error('Delete error:', error);
+        logger.error('Delete error:', error);
       } else {
-        console.log('Delete successful, rows affected:', data?.length);
+        logger.debug('Delete successful, rows affected:', data?.length);
         setServices(services.filter(s => s.id !== id));
       }
     } catch (err: any) {
-      console.error('Unexpected error during delete:', err);
+      logger.error('Unexpected error during delete:', err);
     }
   };
 
@@ -3075,19 +3280,19 @@ const BackOfficePage: React.FC<{
     }
     const promoData = { ...bogoForm, name: 'Buy X Get Y Free', tenant_id: tenant.id };
     setIsSavingPromo(true);
-    console.log('Attempting to save BOGO:', promoData);
+    logger.debug('Attempting to save BOGO:', promoData);
     const { data, error } = await supabase.from('cp_promotions').insert([promoData]).select();
     setIsSavingPromo(false);
     if (error) {
-      console.error('BOGO Save Error:', error);
+      logger.error('BOGO Save Error:', error);
       alert('Error saving BOGO promotion: ' + error.message);
     } else if (data && data.length > 0) {
-      console.log('BOGO Saved Successfully:', data[0]);
+      logger.debug('BOGO Saved Successfully:', data[0]);
       setPromotions([...promotions, data[0]]);
       alert('BOGO Promotion saved successfully!');
       setBogoForm({ type: 'bogo', active: true, buy_qty: 3, get_qty: 1, included_items: [] });
     } else {
-      console.warn('BOGO saved but no data returned');
+      logger.warn('BOGO saved but no data returned');
       fetchPromotions();
       setBogoForm({ type: 'bogo', active: true, buy_qty: 3, get_qty: 1, included_items: [] });
     }
@@ -3099,19 +3304,19 @@ const BackOfficePage: React.FC<{
     }
     const promoData = { ...bundleForm, name: 'Bundle Deal', tenant_id: tenant.id };
     setIsSavingPromo(true);
-    console.log('Attempting to save Bundle:', promoData);
+    logger.debug('Attempting to save Bundle:', promoData);
     const { data, error } = await supabase.from('cp_promotions').insert([promoData]).select();
     setIsSavingPromo(false);
     if (error) {
-      console.error('Bundle Save Error:', error);
+      logger.error('Bundle Save Error:', error);
       alert('Error saving Bundle promotion: ' + error.message);
     } else if (data && data.length > 0) {
-      console.log('Bundle Saved Successfully:', data[0]);
+      logger.debug('Bundle Saved Successfully:', data[0]);
       setPromotions([...promotions, data[0]]);
       alert('Bundle Promotion saved successfully!');
       setBundleForm({ type: 'bundle', active: true, bundle_qty: 5, bundle_price: 20, included_items: [] });
     } else {
-      console.warn('Bundle saved but no data returned');
+      logger.warn('Bundle saved but no data returned');
       fetchPromotions();
       setBundleForm({ type: 'bundle', active: true, bundle_qty: 5, bundle_price: 20, included_items: [] });
     }
@@ -3210,7 +3415,15 @@ const BackOfficePage: React.FC<{
     }
   };
   const toggleDay = async (day: string) => { const key = `day_active_${day}`; const newVal = settings[key] === 'true' ? 'false' : 'true'; handleSaveSettings({ ...settings, [key]: newVal }); };
-  const addSlotToDay = async (day: string) => { const time = newSlotTimes[day]; if (!time) return; const { data, error } = await supabase.from('cp_time_slots').insert([{ day, label: time, active: true, tenant_id: tenant.id }]).select(); if (error) { alert('Failed to add slot: ' + error.message); } else if (data) { setAvailableSlots([...availableSlots, data[0] as TimeSlot]); setNewSlotTimes({ ...newSlotTimes, [day]: '' }); } };
+  const addSlotToDay = async (day: string, type: 'collection' | 'delivery' = 'collection') => {
+    const slotTimesObj = type === 'collection' ? newSlotTimes : deliverySlotTimes;
+    const setSlotTimesObj = type === 'collection' ? setNewSlotTimes : setDeliverySlotTimes;
+    const time = slotTimesObj[day];
+    if (!time) return;
+    const { data, error } = await supabase.from('cp_time_slots').insert([{ day, label: time, active: true, type, tenant_id: tenant.id }]).select();
+    if (error) { alert('Failed to add slot: ' + error.message); }
+    else if (data) { setAvailableSlots([...availableSlots, data[0] as TimeSlot]); setSlotTimesObj({ ...slotTimesObj, [day]: '' }); }
+  };
   const deleteSlot = async (id: string) => { await supabase.from('cp_time_slots').delete().eq('id', id).eq('tenant_id', tenant.id); setAvailableSlots(availableSlots.filter(s => s.id !== id)); };
   const updateOrderStatus = async (orderId: string, status: string) => { await supabase.from('cp_orders').update({ status }).eq('id', orderId); fetchOrders(); };
 
@@ -3279,7 +3492,7 @@ const BackOfficePage: React.FC<{
       alert('Template saved successfully!');
       fetchEmailTemplates();
     } else {
-      console.error(error);
+      logger.error(error);
       alert('Failed to save template. Error: ' + error.message);
     }
   };
@@ -3294,7 +3507,7 @@ const BackOfficePage: React.FC<{
       setDiscountForm({ code: '', discount_type: 'percentage', discount_value: 20, one_time_use: true, expiry_date: '', active: true });
       alert('Discount code saved!');
     } else {
-      console.error(error);
+      logger.error(error);
       alert('Error saving code: ' + (error?.message || 'Unknown error'));
     }
   };
@@ -3523,7 +3736,7 @@ const BackOfficePage: React.FC<{
       const hasHeader = isNewFormat || isOldFormat || headerRow.some(h => h.includes('menu') || h.includes('category') || h.includes('title'));
       const startIdx = hasHeader ? 1 : 0;
 
-      console.log('Detected format:', { isNewFormat, isOldFormat, hasHeader, headerRow });
+      logger.debug('Detected format:', { isNewFormat, isOldFormat, hasHeader, headerRow });
 
       for (let i = startIdx; i < rows.length; i++) {
         const row = rows[i];
@@ -3899,6 +4112,531 @@ const BackOfficePage: React.FC<{
             </div>
           </div>
 
+          {/* Thermal Printer Settings (Bixolon/Receipt Printer) - Only visible in Electron */}
+          {(window as any).electronPrint && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-lg flex items-center gap-2">
+                  <Printer size={20} className="text-amber-600" /> Thermal Printer Settings
+                </h3>
+                <button
+                  onClick={async () => {
+                    try {
+                      const result = await (window as any).electronPrint.getWindowsPrinters();
+                      if (result.success && result.printers) {
+                        setThermalPrinters(result.printers);
+                        alert('Found ' + result.printers.length + ' printers');
+                      }
+                    } catch (e: any) {
+                      alert('Error: ' + e.message);
+                    }
+                  }}
+                  className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-bold hover:bg-amber-200"
+                >
+                  Detect Thermal Printers
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-6">
+                {/* Receipt Printer - Thermal */}
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Receipt Printer (Thermal 80mm)</label>
+                  <p className="text-xs text-gray-500 mb-2">For customer receipts and shop copies - e.g., Bixolon SRP-275III</p>
+                  <select
+                    className="w-full border rounded p-2"
+                    value={thermalPrinterAssignments.receiptPrinter || ''}
+                    onChange={async (e) => {
+                      const newAssignments = { ...thermalPrinterAssignments, receiptPrinter: e.target.value || null };
+                      setThermalPrinterAssignments(newAssignments);
+                      await (window as any).electronPrint.setPrinterAssignments(newAssignments);
+                    }}
+                  >
+                    <option value="">-- Not assigned --</option>
+                    {thermalPrinters.map((p: any) => (
+                      <option key={p.name} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">{thermalPrinters.length} printer(s) available - click "Detect Thermal Printers" above to refresh</p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={async () => {
+                        const printer = thermalPrinterAssignments.receiptPrinter;
+                        if (!printer) {
+                          alert('Please select a receipt printer first');
+                          return;
+                        }
+                        const result = await (window as any).electronPrint.testThermalPrinter(printer);
+                        if (result.success) {
+                          alert('Test print sent successfully!');
+                        } else {
+                          alert('Test print failed: ' + (result.error || 'Unknown error'));
+                        }
+                      }}
+                      className="bg-amber-600 text-white px-3 py-1 rounded font-bold text-sm hover:bg-amber-700"
+                    >
+                      Test Receipt Printer
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const result = await (window as any).electronPrint.openCashDrawer();
+                        if (result.success) {
+                          alert('Cash drawer opened!');
+                        } else {
+                          alert('Failed: ' + (result.error || 'No printer assigned'));
+                        }
+                      }}
+                      className="bg-green-600 text-white px-3 py-1 rounded font-bold text-sm hover:bg-green-700"
+                    >
+                      Open Cash Drawer
+                    </button>
+                  </div>
+                </div>
+
+                {/* DStubs Printer - Dot Matrix */}
+                <div className="border-t pt-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <div>
+                      <label className="block text-sm font-bold text-gray-700">DStubs Printer (Dot-Matrix 76mm)</label>
+                      <p className="text-xs text-gray-500">For garment stubs/tags - e.g., Bixolon SRP-76III dot-matrix</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const result = await (window as any).electronPrint.getWindowsPrinters();
+                          if (result.success && result.printers) {
+                            setThermalPrinters(result.printers);
+                            alert('Found ' + result.printers.length + ' printers');
+                          }
+                        } catch (e: any) {
+                          alert('Error: ' + e.message);
+                        }
+                      }}
+                      className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-bold hover:bg-purple-200"
+                    >
+                      Detect Printers
+                    </button>
+                  </div>
+                  <select
+                    className="w-full border rounded p-2"
+                    value={thermalPrinterAssignments.dstubsPrinter || ''}
+                    onChange={async (e) => {
+                      const newAssignments = { ...thermalPrinterAssignments, dstubsPrinter: e.target.value || null };
+                      setThermalPrinterAssignments(newAssignments);
+                      await (window as any).electronPrint.setPrinterAssignments(newAssignments);
+                    }}
+                  >
+                    <option value="">-- Not assigned --</option>
+                    {thermalPrinters.map((p: any) => (
+                      <option key={p.name} value={p.name}>{p.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">{thermalPrinters.length} printer(s) available</p>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={async () => {
+                        const printer = thermalPrinterAssignments.dstubsPrinter;
+                        if (!printer) {
+                          alert('Please select a DStubs printer first');
+                          return;
+                        }
+                        const result = await (window as any).electronPrint.testThermalPrinter(printer);
+                        if (result.success) {
+                          alert('Test print sent to DStubs printer!');
+                        } else {
+                          alert('Test print failed: ' + (result.error || 'Unknown error'));
+                        }
+                      }}
+                      className="bg-purple-600 text-white px-3 py-1 rounded font-bold text-sm hover:bg-purple-700"
+                    >
+                      Test DStubs Printer
+                    </button>
+                  </div>
+                </div>
+
+                {/* Auto-Print Settings */}
+                <div className="border-t pt-6">
+                  <h4 className="font-bold text-sm text-gray-700 mb-3">Auto-Print Settings</h4>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={thermalPrinterAssignments.autoPrintBagTags || false}
+                        onChange={async (e) => {
+                          const newAssignments = { ...thermalPrinterAssignments, autoPrintBagTags: e.target.checked };
+                          setThermalPrinterAssignments(newAssignments);
+                          await (window as any).electronPrint.setPrinterAssignments(newAssignments);
+                        }}
+                        className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      />
+                      <div>
+                        <span className="font-medium text-gray-800">Auto-print Bag Tags when order is RECEIVED</span>
+                        <p className="text-xs text-gray-500">Prints {settings?.default_tag_count || 1} tag(s) using the default tag count setting</p>
+                      </div>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={thermalPrinterAssignments.autoPrintReceipt || false}
+                        onChange={async (e) => {
+                          const newAssignments = { ...thermalPrinterAssignments, autoPrintReceipt: e.target.checked };
+                          setThermalPrinterAssignments(newAssignments);
+                          await (window as any).electronPrint.setPrinterAssignments(newAssignments);
+                        }}
+                        className="w-5 h-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="font-medium text-gray-800">Auto-print Customer Receipt on order completion</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={thermalPrinterAssignments.autoPrintShopCopy || false}
+                        onChange={async (e) => {
+                          const newAssignments = { ...thermalPrinterAssignments, autoPrintShopCopy: e.target.checked };
+                          setThermalPrinterAssignments(newAssignments);
+                          await (window as any).electronPrint.setPrinterAssignments(newAssignments);
+                        }}
+                        className="w-5 h-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      <span className="font-medium text-gray-800">Auto-print Shop Copy on order completion</span>
+                    </label>
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={thermalPrinterAssignments.autoPrintDstubs || false}
+                        onChange={async (e) => {
+                          const newAssignments = { ...thermalPrinterAssignments, autoPrintDstubs: e.target.checked };
+                          setThermalPrinterAssignments(newAssignments);
+                          await (window as any).electronPrint.setPrinterAssignments(newAssignments);
+                        }}
+                        className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="font-medium text-gray-800">Auto-print DStubs on order completion</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Info Box */}
+                <div className="border-t pt-6">
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                    <h4 className="font-bold text-sm text-amber-700 mb-2 flex items-center gap-2"><Info size={14} /> Printer Assignment Info</h4>
+                    <ul className="text-xs text-amber-800 space-y-1 list-disc list-inside">
+                      <li><strong>Receipt Printer (Thermal 80mm)</strong>: Customer receipt with prices + Shop copy without prices</li>
+                      <li><strong>DStubs Printer (Dot-Matrix 76mm)</strong>: One stub per garment with position numbering (1/5, 2/5, etc.)</li>
+                      <li><strong>Bag Tags (Brother QL-800)</strong>: Configured separately in Label Printer Settings below</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Google Maps & Postcode Settings */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <MapPin size={20} className="text-blue-600" /> Google Maps & Postcode Settings
+              </h3>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-bold">Distance Calculation</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Google Maps API Key</label>
+                <p className="text-xs text-gray-500 mb-2">Required for postcode lookup and distance calculation</p>
+                <input
+                  type="password"
+                  className="w-full border rounded p-2 font-mono text-sm"
+                  value={settings.google_maps_api_key || ''}
+                  onChange={e => setSettings({ ...settings, google_maps_api_key: e.target.value })}
+                  placeholder="AIzaSy..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Store Postcode</label>
+                <p className="text-xs text-gray-500 mb-2">Used as origin for distance calculation</p>
+                <input
+                  type="text"
+                  className="w-full border rounded p-2 uppercase"
+                  value={settings.store_postcode || ''}
+                  onChange={e => setSettings({ ...settings, store_postcode: e.target.value.toUpperCase() })}
+                  placeholder="SW1A 1AA"
+                />
+              </div>
+              <div className="md:col-span-2 flex gap-2">
+                <button
+                  onClick={async () => {
+                    if (!settings.google_maps_api_key) {
+                      alert('Please enter a Google Maps API key first');
+                      return;
+                    }
+                    if (!settings.store_postcode) {
+                      alert('Please enter a store postcode first');
+                      return;
+                    }
+                    try {
+                      // Test with a known UK postcode
+                      const testPostcode = 'SW1A 2AA';
+                      let result;
+                      if ((window as any).electronPrint?.calculateDistance) {
+                        result = await (window as any).electronPrint.calculateDistance({
+                          origin: settings.store_postcode,
+                          destination: testPostcode,
+                          apiKey: settings.google_maps_api_key
+                        });
+                      } else {
+                        alert('Distance calculation only available in Electron desktop app');
+                        return;
+                      }
+                      if (result.error) {
+                        alert('API Error: ' + result.error);
+                      } else if (result.status === 'OK') {
+                        const element = result.rows?.[0]?.elements?.[0];
+                        if (element?.status === 'OK') {
+                          alert(`API Working! Distance from ${settings.store_postcode} to ${testPostcode}: ${element.distance.text}`);
+                        } else {
+                          alert('Could not calculate distance: ' + element?.status);
+                        }
+                      } else {
+                        alert('API returned: ' + result.status);
+                      }
+                    } catch (e: any) {
+                      alert('Error: ' + e.message);
+                    }
+                  }}
+                  className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700"
+                >
+                  Test API Key
+                </button>
+                <button
+                  onClick={() => handleSaveSettings({ ...settings })}
+                  className="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700"
+                >
+                  Save Settings
+                </button>
+              </div>
+              <div className="md:col-span-2">
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <h4 className="font-bold text-sm text-blue-700 mb-2 flex items-center gap-2"><Info size={14} /> Google Maps API Info</h4>
+                  <ul className="text-xs text-blue-800 space-y-1 list-disc list-inside">
+                    <li>Get API key at: <a href="https://console.cloud.google.com" target="_blank" className="underline">console.cloud.google.com</a></li>
+                    <li>Enable these APIs: <strong>Places API</strong>, <strong>Geocoding API</strong>, <strong>Distance Matrix API</strong></li>
+                    <li>Used for postcode validation, address autocomplete, and delivery distance calculation</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Postcode Service Areas */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center gap-2">
+                <Truck size={20} className="text-green-600" /> Postcode Service Areas
+              </h3>
+              <button
+                onClick={() => { setIsAddingPostcodeArea(true); setEditingPostcodeArea(null); setNewPostcodeArea({ area_name: '', postcode_prefixes: '', surcharge_gbp: 0, is_active: true }); }}
+                className="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700 flex items-center gap-2"
+              >
+                <Plus size={16} /> Add Area
+              </button>
+            </div>
+
+            {/* Add/Edit Area Modal */}
+            {(isAddingPostcodeArea || editingPostcodeArea) && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <h4 className="font-bold text-gray-800 mb-4">{editingPostcodeArea ? 'Edit' : 'Add'} Postcode Area</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Area Name</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2"
+                      value={newPostcodeArea.area_name}
+                      onChange={e => setNewPostcodeArea({ ...newPostcodeArea, area_name: e.target.value })}
+                      placeholder="Zone A - Central London"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Postcode Prefixes (comma-separated)</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded p-2 uppercase"
+                      value={newPostcodeArea.postcode_prefixes}
+                      onChange={e => setNewPostcodeArea({ ...newPostcodeArea, postcode_prefixes: e.target.value.toUpperCase() })}
+                      placeholder="SW1, SW3, W1, WC1"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Surcharge (£)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full border rounded p-2"
+                      value={newPostcodeArea.surcharge_gbp}
+                      onChange={e => setNewPostcodeArea({ ...newPostcodeArea, surcharge_gbp: parseFloat(e.target.value) || 0 })}
+                      placeholder="2.50"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="area-active"
+                      checked={newPostcodeArea.is_active}
+                      onChange={e => setNewPostcodeArea({ ...newPostcodeArea, is_active: e.target.checked })}
+                      className="w-5 h-5"
+                    />
+                    <label htmlFor="area-active" className="text-sm font-bold text-gray-700">Active</label>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button onClick={savePostcodeArea} className="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700">
+                    {editingPostcodeArea ? 'Update' : 'Save'} Area
+                  </button>
+                  <button onClick={() => { setIsAddingPostcodeArea(false); setEditingPostcodeArea(null); }} className="bg-gray-400 text-white px-4 py-2 rounded font-bold hover:bg-gray-500">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Areas List */}
+            {postcodeAreas.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <MapPin size={48} className="mx-auto mb-4 opacity-50" />
+                <p>No postcode areas configured yet.</p>
+                <p className="text-sm">Add areas to define collection/delivery zones and schedules.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {postcodeAreas.map(area => {
+                  const areaSlots = postcodeSlots.filter(s => s.postcode_area_id === area.id);
+                  const collectionSlots = areaSlots.filter(s => s.service_type === 'collection');
+                  const deliverySlots = areaSlots.filter(s => s.service_type === 'delivery');
+
+                  return (
+                    <div key={area.id} className={`border rounded-xl p-4 ${area.is_active ? 'border-gray-200' : 'border-gray-300 bg-gray-50 opacity-60'}`}>
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                            {area.area_name}
+                            {!area.is_active && <span className="text-xs bg-gray-300 text-gray-600 px-2 py-0.5 rounded">Inactive</span>}
+                          </h4>
+                          <p className="text-sm text-gray-600">
+                            Postcodes: <span className="font-mono">{area.postcode_prefixes.join(', ')}</span>
+                          </p>
+                          {area.surcharge_gbp > 0 && (
+                            <p className="text-sm text-orange-600 font-bold">Surcharge: £{area.surcharge_gbp.toFixed(2)}</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              setEditingPostcodeArea(area);
+                              setNewPostcodeArea({
+                                area_name: area.area_name,
+                                postcode_prefixes: area.postcode_prefixes.join(', '),
+                                surcharge_gbp: area.surcharge_gbp,
+                                is_active: area.is_active
+                              });
+                              setIsAddingPostcodeArea(false);
+                            }}
+                            className="text-blue-600 hover:text-blue-800 p-1"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button onClick={() => deletePostcodeArea(area.id)} className="text-red-600 hover:text-red-800 p-1">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Expand/Collapse Schedule Button */}
+                      <button
+                        onClick={() => setExpandedAreaId(expandedAreaId === area.id ? null : area.id)}
+                        className="w-full flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition mb-2"
+                      >
+                        <span className="text-sm font-bold text-gray-700">
+                          {expandedAreaId === area.id ? 'Hide Schedule' : 'Configure Schedule'}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {collectionSlots.length} collection, {deliverySlots.length} delivery slots
+                        </span>
+                        {expandedAreaId === area.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+
+                      {/* Expanded Schedule */}
+                      {expandedAreaId === area.id && (
+                        <div className="border-t border-gray-100 pt-4 mt-2">
+                          {/* Collection/Delivery Tabs */}
+                          <div className="bg-gray-100 p-1 rounded-lg inline-flex mb-4 text-sm font-semibold text-gray-600">
+                            <button
+                              onClick={() => setAreaScheduleTab('collection')}
+                              className={`px-4 py-2 rounded ${areaScheduleTab === 'collection' ? 'bg-white shadow-sm text-blue-600' : 'opacity-50 hover:opacity-75'}`}
+                            >
+                              Collection Schedule
+                            </button>
+                            <button
+                              onClick={() => setAreaScheduleTab('delivery')}
+                              className={`px-4 py-2 rounded ${areaScheduleTab === 'delivery' ? 'bg-white shadow-sm text-green-600' : 'opacity-50 hover:opacity-75'}`}
+                            >
+                              Delivery Schedule
+                            </button>
+                          </div>
+
+                          {/* Day-by-Day Schedule */}
+                          <div className="space-y-3">
+                            {DAY_NAMES.map((dayName, dayIdx) => {
+                              const daySlots = (areaScheduleTab === 'collection' ? collectionSlots : deliverySlots).filter(s => s.day_of_week === dayIdx);
+                              const inputKey = `${area.id}-${areaScheduleTab}-${dayIdx}`;
+                              return (
+                                <div key={dayIdx} className="border rounded-lg p-3 bg-white">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-bold text-gray-800">{dayName}</span>
+                                    <span className="text-xs text-gray-500">{daySlots.length} slots</span>
+                                  </div>
+                                  {/* Existing Slots */}
+                                  <div className="flex flex-wrap gap-2 mb-2">
+                                    {daySlots.map(slot => (
+                                      <div key={slot.id} className={`text-xs px-2 py-1 rounded flex items-center gap-2 ${areaScheduleTab === 'collection' ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+                                        <span>{slot.start_time.slice(0,5)}-{slot.end_time.slice(0,5)}</span>
+                                        <span className="text-gray-500">(max {slot.max_bookings})</span>
+                                        <button onClick={() => deletePostcodeSlot(slot.id)} className="text-red-500 hover:text-red-700">
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                    {daySlots.length === 0 && <span className="text-xs text-gray-400 italic">No slots for this day</span>}
+                                  </div>
+                                  {/* Add New Slot */}
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. 09:00 - 12:00"
+                                      value={newSlotTimes2[inputKey] || ''}
+                                      onChange={e => setNewSlotTimes2({ ...newSlotTimes2, [inputKey]: e.target.value })}
+                                      className="border border-gray-300 rounded px-2 py-1 text-sm w-36 focus:ring-1 focus:ring-blue-500 outline-none"
+                                    />
+                                    <button
+                                      onClick={() => {
+                                        addSlotToAreaDay(area.id, areaScheduleTab, dayIdx, newSlotTimes2[inputKey] || '');
+                                      }}
+                                      className={`px-2 py-1 rounded text-xs font-bold flex items-center gap-1 ${areaScheduleTab === 'collection' ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+                                    >
+                                      <Plus size={12} /> Add
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Desktop App Settings - Only visible in Electron */}
           {(window as any).electronApp && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mt-6">
@@ -4080,7 +4818,10 @@ const BackOfficePage: React.FC<{
                         }} title="Print Bag Tags" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-pink-400 hover:bg-pink-50"><ShoppingBag size={14} /><span className="text-[8px] font-bold mt-0.5">Bag Tags</span></button>
 
                         {/* Garment Tags */}
-                        <button onClick={() => printGarmentTags(order)} title="Print Garment Tags (1 per item)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">Garment</span></button>
+                        <button onClick={() => printDStubs(order)} title="Print DStubs (1 per item) - Bixolon" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">DStubs</span></button>
+
+                        {/* Print Receipt (Thermal) */}
+                        <button onClick={() => printOrderReceipts(order)} title="Print Receipt (Thermal)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-amber-400 hover:bg-amber-50"><Printer size={14} /><span className="text-[8px] font-bold mt-0.5">Receipt</span></button>
                       </div>
                     </td>
                   </tr>
@@ -4564,7 +5305,88 @@ const BackOfficePage: React.FC<{
           </div>
         </div>
       )}
-      {activeTab === 'schedule' && (<div className="space-y-6 animate-fade-in"><div className="flex items-center gap-2 mb-4"><Calendar size={24} className="text-trust-blue" /><h2 className="text-2xl font-bold">Online Order Scheduling</h2></div><div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6"><div className="bg-gray-100 p-1 rounded-lg inline-flex mb-6 text-sm font-semibold text-gray-600"><div className="bg-white shadow-sm px-4 py-2 rounded text-gray-900">Collection Schedule</div><div className="px-4 py-2 opacity-50 cursor-not-allowed">Delivery Schedule</div></div><div className="space-y-4">{DAYS.map(day => { const isActive = settings[`day_active_${day}`] === 'true'; const daySlots = availableSlots.filter(s => s.day === day); return (<div key={day} className={`border rounded-xl transition-all ${isActive ? 'border-gray-300 bg-white' : 'border-gray-100 bg-gray-50'}`}><div className="flex items-center justify-between p-4"><span className={`font-bold ${isActive ? 'text-gray-800' : 'text-gray-400'}`}>{day}</span><button onClick={() => toggleDay(day)} className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out ${isActive ? 'bg-trust-blue' : 'bg-gray-300'}`}><div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${isActive ? 'translate-x-6' : 'translate-x-0'}`} /></button></div>{isActive && (<div className="px-4 pb-4 border-t border-gray-100 pt-4 animate-fade-in"><div className="flex flex-wrap gap-2 mb-3">{daySlots.map(slot => (<div key={slot.id} className="bg-blue-50 text-trust-blue px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 border border-blue-100">{slot.label} - {getNextDate(slot.day)}<button onClick={() => deleteSlot(slot.id)} className="text-blue-400 hover:text-red-500 ml-2"><X size={14} /></button></div>))}{daySlots.length === 0 && <span className="text-xs text-gray-400 italic py-1">No slots added.</span>}</div><div className="flex items-center gap-2 mt-2"><input type="text" placeholder="e.g. 09:00 - 12:00" value={newSlotTimes[day] || ''} onChange={e => setNewSlotTimes({ ...newSlotTimes, [day]: e.target.value })} className="border border-gray-300 rounded px-3 py-1.5 text-sm w-40 focus:ring-1 focus:ring-trust-blue outline-none" /><button onClick={() => addSlotToDay(day)} className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition"><Plus size={14} /> Add Time Slot</button></div></div>)}</div>); })}</div></div></div>)}
+      {activeTab === 'schedule' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar size={24} className="text-trust-blue" />
+            <h2 className="text-2xl font-bold">Online Order Scheduling</h2>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            {/* Collection/Delivery Tabs */}
+            <div className="bg-gray-100 p-1 rounded-lg inline-flex mb-6 text-sm font-semibold text-gray-600">
+              <button
+                onClick={() => setScheduleTab('collection')}
+                className={`px-4 py-2 rounded transition ${scheduleTab === 'collection' ? 'bg-white shadow-sm text-trust-blue' : 'hover:bg-gray-200'}`}
+              >
+                Collection Schedule
+              </button>
+              <button
+                onClick={() => setScheduleTab('delivery')}
+                className={`px-4 py-2 rounded transition ${scheduleTab === 'delivery' ? 'bg-white shadow-sm text-green-600' : 'hover:bg-gray-200'}`}
+              >
+                Delivery Schedule
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {DAYS.map(day => {
+                const settingKey = scheduleTab === 'collection' ? `day_active_${day}` : `delivery_day_active_${day}`;
+                const isActive = settings[settingKey] === 'true' || (scheduleTab === 'collection' && settings[`day_active_${day}`] === 'true');
+                const daySlots = availableSlots.filter(s => s.day === day && (s.type === scheduleTab || !s.type));
+                const slotTimesObj = scheduleTab === 'collection' ? newSlotTimes : deliverySlotTimes;
+                const setSlotTimesObj = scheduleTab === 'collection' ? setNewSlotTimes : setDeliverySlotTimes;
+
+                return (
+                  <div key={day} className={`border rounded-xl transition-all ${isActive ? 'border-gray-300 bg-white' : 'border-gray-100 bg-gray-50'}`}>
+                    <div className="flex items-center justify-between p-4">
+                      <span className={`font-bold ${isActive ? 'text-gray-800' : 'text-gray-400'}`}>{day}</span>
+                      <button
+                        onClick={() => {
+                          const key = scheduleTab === 'collection' ? `day_active_${day}` : `delivery_day_active_${day}`;
+                          setSettings({ ...settings, [key]: settings[key] === 'true' ? 'false' : 'true' });
+                        }}
+                        className={`w-12 h-6 rounded-full p-1 transition-colors duration-200 ease-in-out ${isActive ? (scheduleTab === 'collection' ? 'bg-trust-blue' : 'bg-green-500') : 'bg-gray-300'}`}
+                      >
+                        <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ${isActive ? 'translate-x-6' : 'translate-x-0'}`} />
+                      </button>
+                    </div>
+                    {isActive && (
+                      <div className="px-4 pb-4 border-t border-gray-100 pt-4 animate-fade-in">
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {daySlots.map(slot => (
+                            <div key={slot.id} className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 border ${scheduleTab === 'collection' ? 'bg-blue-50 text-trust-blue border-blue-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
+                              {slot.label} - {getNextDate(slot.day)}
+                              <button onClick={() => deleteSlot(slot.id)} className={`ml-2 ${scheduleTab === 'collection' ? 'text-blue-400 hover:text-red-500' : 'text-green-400 hover:text-red-500'}`}>
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          {daySlots.length === 0 && <span className="text-xs text-gray-400 italic py-1">No slots added for {scheduleTab}.</span>}
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="text"
+                            placeholder="e.g. 09:00 - 12:00"
+                            value={slotTimesObj[day] || ''}
+                            onChange={e => setSlotTimesObj({ ...slotTimesObj, [day]: e.target.value })}
+                            className="border border-gray-300 rounded px-3 py-1.5 text-sm w-40 focus:ring-1 focus:ring-trust-blue outline-none"
+                          />
+                          <button
+                            onClick={() => addSlotToDay(day, scheduleTab)}
+                            className={`px-3 py-1.5 rounded text-sm font-bold flex items-center gap-1 transition ${scheduleTab === 'collection' ? 'bg-blue-100 hover:bg-blue-200 text-blue-700' : 'bg-green-100 hover:bg-green-200 text-green-700'}`}
+                          >
+                            <Plus size={14} /> Add {scheduleTab === 'collection' ? 'Collection' : 'Delivery'} Slot
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeTab === 'service' && (
         <div className="space-y-6 animate-fade-in">
@@ -4688,7 +5510,7 @@ const BackOfficePage: React.FC<{
                     {!editingCategory && (
                       <div className="flex items-center gap-1">
                         <button onClick={() => setEditingCategory({ ...cat, originalName: cat.name })} className="text-gray-400 hover:text-trust-blue p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition" title="Edit Category Name"><Edit3 size={16} /></button>
-                        <button onClick={() => { console.log('Category delete clicked:', cat.name); deleteCategory(cat.name); }} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition" title="Delete Category"><Trash2 size={16} /></button>
+                        <button onClick={() => { logger.debug('Category delete clicked:', cat.name); deleteCategory(cat.name); }} className="text-gray-400 hover:text-red-500 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg transition" title="Delete Category"><Trash2 size={16} /></button>
                       </div>
                     )}
                   </div>
@@ -4782,7 +5604,7 @@ const BackOfficePage: React.FC<{
                         ) : (
                           <div className="flex justify-end gap-2">
                             <button onClick={() => setEditingService(svc)} className="text-gray-400 hover:text-trust-blue p-1 transition"><Edit3 size={14} /></button>
-                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); console.log('Delete clicked for:', svc.id, svc.name); deleteService(svc.id, svc.name); }} className="text-gray-400 hover:text-red-500 p-1 transition"><Trash2 size={14} /></button>
+                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); logger.debug('Delete clicked for:', svc.id, svc.name); deleteService(svc.id, svc.name); }} className="text-gray-400 hover:text-red-500 p-1 transition"><Trash2 size={14} /></button>
                           </div>
                         )}
                       </td>
@@ -6477,6 +7299,149 @@ const BackOfficePage: React.FC<{
                 </div>
               </section>
 
+              {/* Postcode Service Areas */}
+              <section className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-2xl p-6 border border-indigo-100 dark:border-indigo-900/30">
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+                  <MapPin className="text-indigo-600" size={24} /> Postcode Service Areas
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Define which postcode areas you service and configure specific collection/delivery slots for each area.</p>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <h4 className="font-bold text-sm mb-2 text-indigo-600">Setting Up Areas</h4>
+                    <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                      <li>• Go to <span className="font-bold">Store Details</span> → scroll to "Postcode Service Areas"</li>
+                      <li>• Click <span className="font-bold">Add Postcode Area</span></li>
+                      <li>• Enter area name (e.g., "Southampton Central")</li>
+                      <li>• Add postcode prefixes (e.g., SO21, SO22, SO23)</li>
+                      <li>• Set optional surcharge for the area</li>
+                      <li>• Toggle active/inactive as needed</li>
+                    </ul>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
+                    <h4 className="font-bold text-sm mb-2 text-indigo-600">Configuring Area Slots</h4>
+                    <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                      <li>• Click on any postcode area to expand it</li>
+                      <li>• Use <span className="font-bold">Collection Schedule</span> tab for pickup slots</li>
+                      <li>• Use <span className="font-bold">Delivery Schedule</span> tab for delivery slots</li>
+                      <li>• Add slots for each day of the week</li>
+                      <li>• Format: "09:00 - 12:00" (24hr format)</li>
+                      <li>• Customers see only slots for their area</li>
+                    </ul>
+                  </div>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm md:col-span-2">
+                    <h4 className="font-bold text-sm mb-2 text-green-600">How It Works for Customers</h4>
+                    <ul className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                      <li>• Customer enters their postcode (e.g., SO21) at booking start</li>
+                      <li>• System checks if postcode matches your configured areas</li>
+                      <li>• If matched, shows only that area's collection & delivery slots</li>
+                      <li>• If not matched, shows "Sorry, we don't service this area"</li>
+                      <li>• Area surcharges automatically added to order total</li>
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
+              {/* Printer Setup */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Printer className="text-trust-blue" size={20} /> Printer Setup (Desktop App)
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>Use the CleanPOS desktop app to print invoices and garment tags to thermal printers.</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Supported Printers</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• <span className="font-bold">ESC/POS Printers:</span> 80mm thermal receipt printers</li>
+                        <li>• <span className="font-bold">Label Printers:</span> Zebra, DYMO, TSC compatible</li>
+                        <li>• <span className="font-bold">Windows:</span> Uses Windows print drivers</li>
+                        <li>• <span className="font-bold">USB/Network:</span> Both supported</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Desktop App Setup</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Download desktop app from your dashboard</li>
+                        <li>• Install printers via Windows settings first</li>
+                        <li>• Open desktop app → click <span className="font-bold">Settings</span></li>
+                        <li>• Select your receipt printer from dropdown</li>
+                        <li>• Select your label printer (optional)</li>
+                        <li>• Click <span className="font-bold">Save Settings</span></li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-purple-600 mb-2">Printing Invoices</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Open any order in Orders tab</li>
+                        <li>• Click the <span className="font-bold">Print</span> button</li>
+                        <li>• Invoice prints to configured receipt printer</li>
+                        <li>• Shows all items, prices, customer details</li>
+                        <li>• Includes QR code for order tracking</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-orange-600 mb-2">Printing Garment Tags</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Click <span className="font-bold">Tags</span> button on order</li>
+                        <li>• Prints one tag per item in the order</li>
+                        <li>• Tag size: 30mm x 50mm labels</li>
+                        <li>• Shows: Order #, Item name, Position (1/5, 2/5...)</li>
+                        <li>• Attach tags to garments for easy tracking</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-200 dark:border-amber-900/30">
+                    <h4 className="font-bold text-amber-700 mb-1 flex items-center gap-2"><AlertCircle size={16} /> Troubleshooting</h4>
+                    <ul className="text-xs text-amber-600 space-y-1">
+                      <li>• <span className="font-bold">Printer not showing?</span> Make sure printer is installed in Windows first</li>
+                      <li>• <span className="font-bold">Prints cut off?</span> Check paper width matches printer (80mm)</li>
+                      <li>• <span className="font-bold">Tags not printing?</span> Ensure label printer is selected in settings</li>
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
+              {/* 4-Step Booking Flow */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Calendar className="text-trust-blue" size={20} /> Customer Booking Flow (4 Steps)
+                </h3>
+                <div className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
+                  <p>Customers now go through a streamlined 4-step booking process with separate collection and delivery slot selection.</p>
+                  <div className="grid md:grid-cols-4 gap-4">
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800 text-center">
+                      <div className="w-10 h-10 bg-trust-blue text-white rounded-full flex items-center justify-center mx-auto mb-2 font-bold">1</div>
+                      <h4 className="font-bold text-sm mb-1">Select Items</h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Customer browses services, adds to cart</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800 text-center">
+                      <div className="w-10 h-10 bg-trust-blue text-white rounded-full flex items-center justify-center mx-auto mb-2 font-bold">2</div>
+                      <h4 className="font-bold text-sm mb-1">Collection Day</h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Select when we pick up items</p>
+                    </div>
+                    <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-200 dark:border-green-800 text-center">
+                      <div className="w-10 h-10 bg-eco-green text-white rounded-full flex items-center justify-center mx-auto mb-2 font-bold">3</div>
+                      <h4 className="font-bold text-sm mb-1">Delivery Day</h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Select when we return items</p>
+                    </div>
+                    <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800 text-center">
+                      <div className="w-10 h-10 bg-purple-600 text-white rounded-full flex items-center justify-center mx-auto mb-2 font-bold">4</div>
+                      <h4 className="font-bold text-sm mb-1">Your Details</h4>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Enter address, confirm booking</p>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl mt-4">
+                    <h4 className="font-bold text-trust-blue mb-2">Benefits of Separate Collection & Delivery</h4>
+                    <ul className="space-y-1 text-xs">
+                      <li>• <span className="font-bold">Better Planning:</span> Know exactly when to collect and deliver each order</li>
+                      <li>• <span className="font-bold">Customer Choice:</span> Customers pick convenient times for both</li>
+                      <li>• <span className="font-bold">Route Efficiency:</span> Group collections on some days, deliveries on others</li>
+                      <li>• <span className="font-bold">Clear Expectations:</span> Both slots shown on order details and invoices</li>
+                    </ul>
+                  </div>
+                </div>
+              </section>
+
               {/* Support */}
               <section className="text-center py-6">
                 <p className="text-sm text-gray-500 dark:text-gray-400">Need more help? Contact support at <span className="font-bold text-trust-blue">support@posso.co.uk</span></p>
@@ -6668,7 +7633,7 @@ const BackOfficePage: React.FC<{
         </div>
       )}
 
-      {/* QR Scanner Modal */}
+      {/* Tag Scanner Modal - for handheld barcode scanners */}
       {showQRScanner && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in">
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
@@ -6679,24 +7644,50 @@ const BackOfficePage: React.FC<{
               <Search className="text-pink-600" size={24} />
               Scan Order Tag
             </h3>
-            <p className="text-sm text-gray-500 mb-4">Point your camera at the QR code on the tag</p>
 
-            <div className="relative bg-black rounded-xl overflow-hidden mb-4" style={{ aspectRatio: '4/3' }}>
-              <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-              <canvas ref={canvasRef} className="hidden" />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-48 h-48 border-4 border-pink-500 rounded-2xl opacity-50"></div>
+            {/* Scanner input field - auto-focused for handheld scanners */}
+            <div className="mb-4">
+              <p className="text-sm text-gray-500 mb-3">Scan the barcode with your handheld scanner, or type the order number below.</p>
+              <input
+                ref={scannerInputRef}
+                type="text"
+                value={scannerInput}
+                onChange={(e) => handleScannerInput(e.target.value.toUpperCase())}
+                onKeyDown={handleScannerKeyDown}
+                placeholder="Scan or type order number..."
+                className="w-full text-2xl font-mono font-bold text-center tracking-widest p-4 border-2 border-pink-300 rounded-xl focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none bg-pink-50 dark:bg-gray-800 dark:border-pink-600"
+                autoFocus
+                autoComplete="off"
+              />
+            </div>
+
+            {/* Visual indicator */}
+            <div className="bg-gradient-to-r from-pink-100 to-purple-100 dark:from-pink-900/30 dark:to-purple-900/30 rounded-xl p-4 mb-4">
+              <div className="flex items-center gap-3 text-pink-700 dark:text-pink-300">
+                <div className="w-12 h-12 bg-pink-200 dark:bg-pink-800 rounded-full flex items-center justify-center">
+                  <Search size={24} />
+                </div>
+                <div>
+                  <p className="font-bold">Ready to scan</p>
+                  <p className="text-xs opacity-75">Barcode will auto-populate above</p>
+                </div>
               </div>
             </div>
 
-            <div className="text-center text-sm text-gray-500 mb-4">— or enter order ID manually —</div>
+            {/* Manual entry notice */}
+            <div className="text-center text-xs text-gray-400 mb-4 flex items-center justify-center gap-2">
+              <span className="w-8 h-px bg-gray-300"></span>
+              No scanner? Type the order number and press Enter
+              <span className="w-8 h-px bg-gray-300"></span>
+            </div>
 
             <button
-              onClick={() => { setShowTouchKeypad(true); setTouchKeypadValue(''); }}
-              className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-pink-700 hover:to-purple-700 flex items-center justify-center gap-3"
+              onClick={() => { if (scannerInput.trim()) loadScannedOrder(scannerInput.trim()); }}
+              disabled={!scannerInput.trim()}
+              className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white py-4 rounded-xl font-bold text-lg hover:from-pink-700 hover:to-purple-700 flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Hash size={24} />
-              Enter Tag Code
+              Find Order
             </button>
           </div>
         </div>
@@ -7484,8 +8475,9 @@ const BookingPage: React.FC<{
   companySettings: any;
 }> = ({ tenant, cart, setCart, availableSlots, currentUser, onLoginSuccess, setPage, companySettings }) => {
   const [step, setStep] = useState(1);
-  const [customer, setCustomer] = useState({ name: '', email: '', phone: '', address: '', notes: '' });
+  const [customer, setCustomer] = useState({ name: '', email: '', phone: '', address: '', address2: '', city: '', postcode: '', notes: '' });
   const [selectedSlot, setSelectedSlot] = useState<string>('');
+  const [selectedDeliverySlot, setSelectedDeliverySlot] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [recurring, setRecurring] = useState<'none' | 'weekly' | '2weekly'>('none');
@@ -7504,6 +8496,30 @@ const BookingPage: React.FC<{
   const [showMultiOfferWarning, setShowMultiOfferWarning] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
   const [recentItems, setRecentItems] = useState<{name: string; price: string; count: number}[]>([]);
+
+  // Postcode Entry State
+  const [showPostcodeModal, setShowPostcodeModal] = useState(true);
+  const [postcodeInput, setPostcodeInput] = useState('');
+  const [postcodeChecking, setPostcodeChecking] = useState(false);
+  const [postcodeResult, setPostcodeResult] = useState<{
+    valid: boolean;
+    area: any | null;
+    distance?: { miles: number; text: string };
+    collectionSlots: any[];
+    deliverySlots: any[];
+    surcharge: number;
+    errorMessage?: string;
+  } | null>(null);
+  const [selectedPostcodeSlot, setSelectedPostcodeSlot] = useState<{ type: 'collection' | 'delivery'; slotId: string; date: string; label: string } | null>(null);
+  const [postcodeAreas, setPostcodeAreas] = useState<any[]>([]);
+  const [postcodeSlots, setPostcodeSlots] = useState<any[]>([]);
+  const DAY_NAMES_BOOKING = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  // Helper to get full address string
+  const getFullAddress = () => {
+    const parts = [customer.address, customer.address2, customer.city, customer.postcode].filter(Boolean);
+    return parts.join(', ');
+  };
 
   // Category icons mapping
   const getCategoryIcon = (catName: string) => {
@@ -7547,11 +8563,17 @@ const BookingPage: React.FC<{
         if (mounted && promos) setPromotions(promos.filter(p => p.active));
 
         if (currentUser) {
+          // Parse existing address if stored as comma-separated
+          const storedAddress = currentUser.address || '';
+          const addressParts = storedAddress.split(',').map((p: string) => p.trim());
           setCustomer({
             name: currentUser.name || '',
             email: currentUser.email || '',
             phone: currentUser.phone || '',
-            address: currentUser.address || '',
+            address: addressParts[0] || '',
+            address2: addressParts[1] || '',
+            city: addressParts[2] || '',
+            postcode: addressParts[3] || '',
             notes: currentUser.notes || ''
           });
           if (currentUser.loyalty_points) setPointsBalance(currentUser.loyalty_points);
@@ -7589,7 +8611,7 @@ const BookingPage: React.FC<{
           }
         }
       } catch (err) {
-        console.error('Error loading booking data:', err);
+        logger.error('Error loading booking data:', err);
       } finally {
         if (mounted) setDataLoading(false);
       }
@@ -7597,6 +8619,124 @@ const BookingPage: React.FC<{
     loadBookingData();
     return () => { mounted = false; };
   }, [tenant, currentUser]);
+
+  // Fetch postcode areas and slots for validation
+  useEffect(() => {
+    const loadPostcodeData = async () => {
+      const { data: areas } = await supabase.from('cp_postcode_areas').select('*').eq('tenant_id', tenant.id).eq('is_active', true);
+      if (areas) setPostcodeAreas(areas);
+      const { data: slots } = await supabase.from('cp_postcode_service_slots').select('*').eq('is_active', true);
+      if (slots) setPostcodeSlots(slots);
+    };
+    loadPostcodeData();
+  }, [tenant]);
+
+  // Check postcode against service areas
+  const checkPostcode = async () => {
+    const postcode = postcodeInput.trim().toUpperCase().replace(/\s+/g, '');
+    if (!postcode) { alert('Please enter a postcode area'); return; }
+
+    // Accept either full postcode OR just the prefix/outward code
+    // Full postcode: SO211HD, SW1A1AA, etc.
+    // Prefix only: SO21, SW1A, SW1, W1, etc.
+    const FULL_POSTCODE_REGEX = /^([A-Z]{1,2}\d{1,2}[A-Z]?)(\d[A-Z]{2})$/i;
+    const PREFIX_ONLY_REGEX = /^[A-Z]{1,2}\d{1,2}[A-Z]?$/i;
+
+    let prefix = '';
+    if (FULL_POSTCODE_REGEX.test(postcode)) {
+      // Full postcode entered - extract prefix
+      const match = postcode.match(FULL_POSTCODE_REGEX);
+      prefix = match ? match[1].toUpperCase() : '';
+    } else if (PREFIX_ONLY_REGEX.test(postcode)) {
+      // Just the prefix/area code entered (e.g., SO21)
+      prefix = postcode.toUpperCase();
+    } else {
+      setPostcodeResult({ valid: false, area: null, collectionSlots: [], deliverySlots: [], surcharge: 0, errorMessage: 'Enter your postcode area (e.g., SO21)' });
+      return;
+    }
+
+    setPostcodeChecking(true);
+
+    // Find matching area - check if entered prefix matches any configured area prefix
+    let matchedArea: any = null;
+    for (const area of postcodeAreas) {
+      for (const areaPrefix of area.postcode_prefixes) {
+        const normalizedAreaPrefix = areaPrefix.trim().toUpperCase().replace(/\s+/g, '');
+        // Match if prefixes are equal or one starts with the other
+        if (prefix === normalizedAreaPrefix ||
+            prefix.startsWith(normalizedAreaPrefix) ||
+            normalizedAreaPrefix.startsWith(prefix)) {
+          matchedArea = area;
+          break;
+        }
+      }
+      if (matchedArea) break;
+    }
+
+    // Calculate distance if we have settings
+    let distance: { miles: number; text: string } | undefined;
+    const { data: settingsData } = await supabase.from('cp_company_settings').select('google_maps_api_key, store_postcode').eq('tenant_id', tenant.id).single();
+
+    if (settingsData?.google_maps_api_key && settingsData?.store_postcode && (window as any).electronPrint?.calculateDistance) {
+      try {
+        const result = await (window as any).electronPrint.calculateDistance({
+          origin: settingsData.store_postcode,
+          destination: postcode,
+          apiKey: settingsData.google_maps_api_key
+        });
+        if (result.status === 'OK' && result.rows?.[0]?.elements?.[0]?.status === 'OK') {
+          const element = result.rows[0].elements[0];
+          distance = { miles: parseFloat((element.distance.value * 0.000621371).toFixed(1)), text: element.distance.text };
+        }
+      } catch (e) { logger.error('Distance calculation error:', e); }
+    }
+
+    if (!matchedArea) {
+      setPostcodeResult({ valid: false, area: null, distance, collectionSlots: [], deliverySlots: [], surcharge: 0, errorMessage: 'Sorry, we do not currently service this postcode area.' });
+      setPostcodeChecking(false);
+      return;
+    }
+
+    // Get available slots for next 7 days
+    const areaSlots = postcodeSlots.filter(s => s.postcode_area_id === matchedArea.id);
+    const collectionSlots: any[] = [];
+    const deliverySlots: any[] = [];
+    const today = new Date();
+
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + dayOffset);
+      const dayOfWeek = date.getDay();
+      const dateStr = date.toISOString().split('T')[0];
+      const dayName = DAY_NAMES_BOOKING[dayOfWeek];
+
+      areaSlots.forEach(slot => {
+        if (slot.day_of_week === dayOfWeek) {
+          const slotData = {
+            date,
+            dateStr,
+            day_name: dayName,
+            time_range: `${slot.start_time.slice(0,5)}-${slot.end_time.slice(0,5)}`,
+            slots_remaining: slot.max_bookings, // TODO: query actual bookings
+            slot_id: slot.id,
+            label: `${dayName} ${date.getDate()}/${date.getMonth()+1}, ${slot.start_time.slice(0,5)}-${slot.end_time.slice(0,5)}`
+          };
+          if (slot.service_type === 'collection') collectionSlots.push(slotData);
+          else deliverySlots.push(slotData);
+        }
+      });
+    }
+
+    setPostcodeResult({
+      valid: true,
+      area: matchedArea,
+      distance,
+      collectionSlots,
+      deliverySlots,
+      surcharge: matchedArea.surcharge_gbp || 0
+    });
+    setPostcodeChecking(false);
+  };
 
   // Effect to auto-set recurring if Valet Bag is in cart
   useEffect(() => {
@@ -7816,36 +8956,36 @@ const BookingPage: React.FC<{
   };
 
   const submitOrder = async () => {
-    console.log('--- STARTING ORDER SUBMISSION ---');
-    console.log('Customer Details:', customer);
-    console.log('Selected Slot:', selectedSlot);
-    console.log('Cart Items:', cart);
+    logger.debug('--- STARTING ORDER SUBMISSION ---');
+    logger.debug('Customer Details:', customer);
+    logger.debug('Selected Slot:', selectedSlot);
+    logger.debug('Cart Items:', cart);
 
-    if (!customer.name || !customer.phone || !customer.address || !selectedSlot) {
-      console.warn('Submission blocked: Missing details');
+    if (!customer.name || !customer.phone || !customer.address || !customer.postcode || !selectedSlot) {
+      logger.warn('Submission blocked: Missing details');
       alert("Please fill in all details and select a collection slot.");
       return;
     }
 
     if (createAccount && !accountPassword) {
-      console.warn('Submission blocked: Password missing for new account');
+      logger.warn('Submission blocked: Password missing for new account');
       alert("Please enter a password to create your account.");
       return;
     }
 
     setLoading(true);
     try {
-      console.log('Fetching store settings...');
+      logger.debug('Fetching store settings...');
       let storeEmail = '';
       const { data: settings, error: settingsError } = await supabase.from('cp_app_settings').select('value').eq('key', 'store_email').eq('tenant_id', tenant.id).single();
 
       if (settingsError && settingsError.code !== 'PGRST116') {
-        console.warn('Error fetching settings:', settingsError);
+        logger.warn('Error fetching settings:', settingsError);
       }
       if (settings) storeEmail = settings.value;
 
       const readableId = Math.random().toString(36).substring(2, 6).toUpperCase();
-      console.log('Generated Order ID:', readableId);
+      logger.debug('Generated Order ID:', readableId);
 
       let userPreferences = {};
       if (currentUser) {
@@ -7860,9 +9000,28 @@ const BookingPage: React.FC<{
         };
       }
 
-      // Find slot label for DB
-      const slotObj = availableSlots.find(s => s.id === selectedSlot);
-      const slotLabel = slotObj ? `${slotObj.day} ${slotObj.label}` : 'Flexible';
+      // Find slot labels for DB
+      let slotLabel = 'Flexible';
+      if (selectedSlot !== 'anytime') {
+        const postcodeSlot = postcodeResult?.collectionSlots?.find((s: any) => s.id === selectedSlot);
+        if (postcodeSlot) {
+          slotLabel = postcodeSlot.label;
+        } else {
+          const slotObj = availableSlots.find(s => s.id === selectedSlot);
+          if (slotObj) slotLabel = `${slotObj.day} ${slotObj.label}`;
+        }
+      }
+
+      let deliverySlotLabel = 'Flexible';
+      if (selectedDeliverySlot !== 'anytime') {
+        const postcodeDeliverySlot = postcodeResult?.deliverySlots?.find((s: any) => s.id === selectedDeliverySlot);
+        if (postcodeDeliverySlot) {
+          deliverySlotLabel = postcodeDeliverySlot.label;
+        } else {
+          const deliverySlotObj = availableSlots.find(s => s.id === selectedDeliverySlot);
+          if (deliverySlotObj) deliverySlotLabel = `${deliverySlotObj.day} ${deliverySlotObj.label}`;
+        }
+      }
 
       // Get or create customer_id for proper FK relationship
       let customerId: string | null = null;
@@ -7886,9 +9045,10 @@ const BookingPage: React.FC<{
         customer_name: customer.name,
         customer_email: customer.email,
         customer_phone: customer.phone,
-        customer_address: customer.address,
+        customer_address: getFullAddress(),
         collection_slot_id: selectedSlot === 'anytime' ? null : selectedSlot,
         collection_slot_label: slotLabel,
+        delivery_slot: deliverySlotLabel,
         status: 'pending',
         total_amount: totals.finalTotal,
         points_earned: totals.potential,
@@ -7906,11 +9066,11 @@ const BookingPage: React.FC<{
         orderData.customer_id = customerId;
       }
 
-      console.log('Inserting order into DB:', orderData);
+      logger.debug('Inserting order into DB:', orderData);
       const { data: orderResult, error: orderError } = await supabase.from('cp_orders').insert([orderData]).select().single();
 
       if (orderError) throw orderError;
-      console.log('Order inserted successfully!', orderResult);
+      logger.debug('Order inserted successfully!', orderResult);
 
       // Insert Order Items
       if (cart.length > 0) {
@@ -7922,7 +9082,7 @@ const BookingPage: React.FC<{
           tenant_id: tenant.id
         }));
         const { error: itemsError } = await supabase.from('cp_order_items').insert(itemRows);
-        if (itemsError) console.warn('Order items insert error:', itemsError);
+        if (itemsError) logger.warn('Order items insert error:', itemsError);
       }
 
       let newBalance = pointsBalance + totals.potential;
@@ -7932,7 +9092,7 @@ const BookingPage: React.FC<{
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        address: customer.address,
+        address: getFullAddress(),
         loyalty_points: newBalance,
         notes: customer.notes,
         subscription_frequency: recurring,
@@ -7944,9 +9104,9 @@ const BookingPage: React.FC<{
         customerUpdate.password = accountPassword;
       }
 
-      console.log('Updating customer profile/account...');
+      logger.debug('Updating customer profile/account...');
       const { data: customerRecord, error: custError } = await supabase.from('cp_customers').upsert(customerUpdate, { onConflict: 'email' }).select().single();
-      if (custError) console.warn('Customer upsert non-critical error:', custError);
+      if (custError) logger.warn('Customer upsert non-critical error:', custError);
 
       // Update order with customer_id if we didn't have it initially (new customer)
       if (customerRecord && !customerId) {
@@ -7963,7 +9123,7 @@ const BookingPage: React.FC<{
           items: cart,
           tenant_id: tenant.id
         };
-        console.log('Saving invoice to DB:', invoiceData);
+        logger.debug('Saving invoice to DB:', invoiceData);
         await supabase.from('cp_invoices').insert([invoiceData]);
       }
 
@@ -7974,7 +9134,7 @@ const BookingPage: React.FC<{
         (totals.finalTotal > 0 || recurring !== 'none');
 
       if (requiresStripePayment) {
-        console.log('Initiating Stripe Payment Redirect...');
+        logger.debug('Initiating Stripe Payment Redirect...');
         try {
           const { data: stripeData, error: stripeInvokeError } = await supabase.functions.invoke('stripe-payment', {
             body: {
@@ -7989,7 +9149,7 @@ const BookingPage: React.FC<{
           });
 
           if (stripeInvokeError) {
-            console.error('Stripe Function Error:', stripeInvokeError);
+            logger.error('Stripe Function Error:', stripeInvokeError);
           } else if (stripeData?.url) {
             // Store the session ID in the order before redirecting
             if (stripeData.sessionId) {
@@ -7999,7 +9159,7 @@ const BookingPage: React.FC<{
             return;
           }
         } catch (stErr: any) {
-          console.error('Failed to initiate Stripe:', stErr);
+          logger.error('Failed to initiate Stripe:', stErr);
         }
       }
 
@@ -8010,7 +9170,7 @@ const BookingPage: React.FC<{
         onLoginSuccess({ ...currentUser, ...customerUpdate });
       }
 
-      console.log('Triggering email confirmation...');
+      logger.debug('Triggering email confirmation...');
       await sendOrderConfirmation({
         name: customer.name,
         email: customer.email,
@@ -8023,12 +9183,12 @@ const BookingPage: React.FC<{
       });
 
       setCart([]);
-      console.log('Order Flow Complete.');
+      logger.debug('Order Flow Complete.');
       alert("Order submitted successfully! Confirmation emails have been sent to your account and the store.");
       setPage('customer-portal');
 
     } catch (err: any) {
-      console.error('CRITICAL ERROR IN SUBMIT ORDER:', err);
+      logger.error('CRITICAL ERROR IN SUBMIT ORDER:', err);
       alert("Order submission failed: " + (err.message || "Unknown error occurred"));
     } finally {
       setLoading(false);
@@ -8050,6 +9210,192 @@ const BookingPage: React.FC<{
           </div>
         </div>
       )}
+
+      {/* Postcode Entry Modal - Shows first before booking */}
+      {showPostcodeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in">
+          {/* Fancy gradient backdrop */}
+          <div className="absolute inset-0 bg-gradient-to-br from-green-900/80 via-emerald-800/70 to-teal-900/80 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-green-400/20 via-transparent to-transparent" />
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 relative max-h-[90vh] overflow-y-auto z-10">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <MapPin size={32} className="text-green-600" />
+              </div>
+              <h2 className="text-2xl font-bold text-gray-900">Enter Your Postcode Area</h2>
+              <p className="text-gray-500 text-sm mt-1">Enter your postcode area (e.g., SO21) to check availability</p>
+            </div>
+
+            {/* No Postcode Areas Notice */}
+            {postcodeAreas.length === 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-center">
+                <Info size={24} className="text-blue-600 mx-auto mb-2" />
+                <p className="text-blue-800 font-bold">Collection & Delivery Areas Coming Soon!</p>
+                <p className="text-sm text-blue-600 mt-1">Service areas are being configured. You can still place your order below.</p>
+              </div>
+            )}
+
+            {/* Postcode Input */}
+            {postcodeAreas.length > 0 && (
+            <div className="mb-6">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  className="flex-1 border-2 border-gray-200 rounded-xl p-3 text-lg uppercase font-mono focus:border-green-500 focus:outline-none"
+                  placeholder="e.g. SO21 or SW1A"
+                  value={postcodeInput}
+                  onChange={e => setPostcodeInput(e.target.value.toUpperCase())}
+                  onKeyDown={e => e.key === 'Enter' && checkPostcode()}
+                />
+                <button
+                  onClick={checkPostcode}
+                  disabled={postcodeChecking}
+                  className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {postcodeChecking ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+                  Check
+                </button>
+              </div>
+            </div>
+            )}
+
+            {/* Results */}
+            {postcodeResult && (
+              <div className="space-y-4">
+                {postcodeResult.valid ? (
+                  <>
+                    {/* Area Found */}
+                    <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                      <div className="flex items-center gap-2 text-green-700 font-bold mb-1">
+                        <CheckCircle size={20} /> {postcodeResult.area?.area_name || 'Service Area'}
+                      </div>
+                      {postcodeResult.distance && (
+                        <p className="text-sm text-gray-600">Distance: {postcodeResult.distance.text}</p>
+                      )}
+                      {postcodeResult.surcharge > 0 && (
+                        <p className="text-sm text-orange-600 font-bold mt-1">Surcharge: £{postcodeResult.surcharge.toFixed(2)}</p>
+                      )}
+                    </div>
+
+                    {/* Collection Slots */}
+                    {postcodeResult.collectionSlots.length > 0 && (
+                      <div>
+                        <h4 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
+                          <Package size={16} className="text-blue-600" /> Collection Slots (Next 7 Days)
+                        </h4>
+                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
+                          {postcodeResult.collectionSlots.map((slot: any, idx: number) => (
+                            <label
+                              key={`col-${idx}`}
+                              className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${
+                                selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr
+                                  ? 'border-blue-500 bg-blue-50'
+                                  : 'border-gray-200 hover:border-blue-300'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="postcode-slot"
+                                checked={selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr}
+                                onChange={() => setSelectedPostcodeSlot({ type: 'collection', slotId: slot.slot_id, date: slot.dateStr, label: slot.label })}
+                                className="w-4 h-4 text-blue-600"
+                              />
+                              <span className="text-sm">{slot.label}</span>
+                              <span className="text-xs text-gray-400 ml-auto">({slot.slots_remaining} left)</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Delivery Slots */}
+                    {postcodeResult.deliverySlots.length > 0 && (
+                      <div>
+                        <h4 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
+                          <Truck size={16} className="text-green-600" /> Delivery Slots (Next 7 Days)
+                        </h4>
+                        <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
+                          {postcodeResult.deliverySlots.map((slot: any, idx: number) => (
+                            <label
+                              key={`del-${idx}`}
+                              className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${
+                                selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr
+                                  ? 'border-green-500 bg-green-50'
+                                  : 'border-gray-200 hover:border-green-300'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name="postcode-slot"
+                                checked={selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr}
+                                onChange={() => setSelectedPostcodeSlot({ type: 'delivery', slotId: slot.slot_id, date: slot.dateStr, label: slot.label })}
+                                className="w-4 h-4 text-green-600"
+                              />
+                              <span className="text-sm">{slot.label}</span>
+                              <span className="text-xs text-gray-400 ml-auto">({slot.slots_remaining} left)</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {postcodeResult.collectionSlots.length === 0 && postcodeResult.deliverySlots.length === 0 && (
+                      <div className="text-center py-4 text-gray-500">
+                        <p>No slots configured for this area yet.</p>
+                        <p className="text-sm">Please contact the store to arrange collection.</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                    <XCircle size={32} className="text-red-500 mx-auto mb-2" />
+                    <p className="text-red-700 font-bold">{postcodeResult.errorMessage}</p>
+                    {postcodeResult.distance && (
+                      <p className="text-sm text-gray-600 mt-2">Distance: {postcodeResult.distance.text}</p>
+                    )}
+                    <p className="text-sm text-gray-500 mt-2">Please contact us for special delivery arrangements.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowPostcodeModal(false);
+                  setPostcodeResult(null);
+                  setSelectedPostcodeSlot(null);
+                }}
+                className="flex-1 border-2 border-gray-300 text-gray-700 px-4 py-3 rounded-xl font-bold hover:bg-gray-50"
+              >
+                Skip for Now
+              </button>
+              <button
+                onClick={() => {
+                  if (postcodeResult?.valid) {
+                    // Store the postcode in the postcode field
+                    if (!customer.postcode) {
+                      setCustomer({ ...customer, postcode: postcodeInput.toUpperCase() });
+                    }
+                    setShowPostcodeModal(false);
+                  } else if (!postcodeResult) {
+                    // No check done yet, allow skipping
+                    setShowPostcodeModal(false);
+                  } else {
+                    alert('Please enter a valid postcode in our service area to continue.');
+                  }
+                }}
+                disabled={postcodeResult !== null && !postcodeResult.valid}
+                className="flex-1 bg-green-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continue to Booking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Multiple Offers Warning Modal */}
       {showMultiOfferWarning && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 animate-fade-in">
@@ -8127,7 +9473,7 @@ const BookingPage: React.FC<{
         </div>
       )}
 
-      <div className="flex justify-center mb-12"><div className="flex items-center"><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${step >= 1 ? 'bg-trust-blue text-white' : 'bg-gray-200 text-gray-500'}`}>1</div><div className={`w-16 h-1 ${step >= 2 ? 'bg-trust-blue' : 'bg-gray-200'}`} /><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${step >= 2 ? 'bg-trust-blue text-white' : 'bg-gray-200 text-gray-500'}`}>2</div><div className={`w-16 h-1 ${step >= 3 ? 'bg-trust-blue' : 'bg-gray-200'}`} /><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${step >= 3 ? 'bg-trust-blue text-white' : 'bg-gray-200 text-gray-500'}`}>3</div></div></div>
+      <div className="flex justify-center mb-12"><div className="flex items-center"><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${step >= 1 ? 'bg-trust-blue text-white' : 'bg-gray-200 text-gray-500'}`}>1</div><div className={`w-12 h-1 ${step >= 2 ? 'bg-trust-blue' : 'bg-gray-200'}`} /><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${step >= 2 ? 'bg-trust-blue text-white' : 'bg-gray-200 text-gray-500'}`}>2</div><div className={`w-12 h-1 ${step >= 3 ? 'bg-trust-blue' : 'bg-gray-200'}`} /><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${step >= 3 ? 'bg-trust-blue text-white' : 'bg-gray-200 text-gray-500'}`}>3</div><div className={`w-12 h-1 ${step >= 4 ? 'bg-trust-blue' : 'bg-gray-200'}`} /><div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${step >= 4 ? 'bg-trust-blue text-white' : 'bg-gray-200 text-gray-500'}`}>4</div></div></div>
 
       {step === 1 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -8489,19 +9835,160 @@ const BookingPage: React.FC<{
 
       {step === 2 && (
         <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-          <h2 className="font-bold text-2xl mb-6">Select Collection Slot</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">{availableSlots.length > 0 ? availableSlots.map(slot => (<button key={slot.id} onClick={() => setSelectedSlot(slot.id)} className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === slot.id ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}><div className="font-bold text-lg mb-1">{slot.day}</div><div className="flex items-center gap-2 text-sm opacity-80"><Clock size={16} /> {slot.label} - {getNextDate(slot.day)}</div>{selectedSlot === slot.id && <div className="absolute top-2 right-2 bg-trust-blue text-white rounded-full p-1"><Check size={12} /></div>}</button>)) : <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No slots available.</p>}<button onClick={() => setSelectedSlot('anytime')} className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === 'anytime' ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}><div className="font-bold text-lg mb-1">Anytime</div><div className="flex items-center gap-2 text-sm opacity-80"><Clock size={16} /> Flexible (8am - 5pm)</div>{selectedSlot === 'anytime' && <div className="absolute top-2 right-2 bg-trust-blue text-white rounded-full p-1"><Check size={12} /></div>}</button></div>
-          <div className="flex justify-between border-t pt-6"><button onClick={() => setStep(1)} className="text-gray-500 font-bold hover:text-gray-700">Back</button><button onClick={() => setStep(3)} disabled={!selectedSlot} className="bg-trust-blue text-white px-8 py-3 rounded-lg font-bold hover:bg-trust-blue-hover disabled:opacity-50 flex items-center gap-2">Enter Details</button></div>
+          <h2 className="font-bold text-2xl mb-6">Select Collection Day</h2>
+          <p className="text-gray-600 mb-6">When would you like us to collect your items?</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            {postcodeResult?.collectionSlots && postcodeResult.collectionSlots.length > 0 ? (
+              postcodeResult.collectionSlots.map((slot: any) => (
+                <button
+                  key={slot.slot_id}
+                  onClick={() => setSelectedSlot(slot.slot_id)}
+                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === slot.slot_id ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
+                >
+                  <div className="font-bold text-lg mb-1">{slot.day_name}</div>
+                  <div className="flex items-center gap-2 text-sm opacity-80">
+                    <Clock size={16} /> {slot.label}
+                  </div>
+                  {selectedSlot === slot.slot_id && <div className="absolute top-2 right-2 bg-trust-blue text-white rounded-full p-1"><Check size={12} /></div>}
+                </button>
+              ))
+            ) : availableSlots.filter(s => s.type === 'collection' || !s.type).length > 0 ? (
+              availableSlots.filter(s => s.type === 'collection' || !s.type).map(slot => (
+                <button
+                  key={slot.id}
+                  onClick={() => setSelectedSlot(slot.id)}
+                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === slot.id ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
+                >
+                  <div className="font-bold text-lg mb-1">{slot.day}</div>
+                  <div className="flex items-center gap-2 text-sm opacity-80">
+                    <Clock size={16} /> {slot.label} - {getNextDate(slot.day)}
+                  </div>
+                  {selectedSlot === slot.id && <div className="absolute top-2 right-2 bg-trust-blue text-white rounded-full p-1"><Check size={12} /></div>}
+                </button>
+              ))
+            ) : (
+              <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No collection slots available.</p>
+            )}
+            {/* Only show Anytime if no postcode-specific slots AND no general collection slots */}
+            {!(postcodeResult?.collectionSlots && postcodeResult.collectionSlots.length > 0) && availableSlots.filter(s => s.type === 'collection' || !s.type).length === 0 && (
+              <button
+                onClick={() => setSelectedSlot('anytime')}
+                className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === 'anytime' ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
+              >
+                <div className="font-bold text-lg mb-1">Anytime</div>
+                <div className="flex items-center gap-2 text-sm opacity-80">
+                  <Clock size={16} /> Flexible (8am - 5pm)
+                </div>
+                {selectedSlot === 'anytime' && <div className="absolute top-2 right-2 bg-trust-blue text-white rounded-full p-1"><Check size={12} /></div>}
+              </button>
+            )}
+          </div>
+          <div className="flex justify-between border-t pt-6">
+            <button onClick={() => setStep(1)} className="text-gray-500 font-bold hover:text-gray-700">Back</button>
+            <button onClick={() => setStep(3)} disabled={!selectedSlot} className="bg-trust-blue text-white px-8 py-3 rounded-lg font-bold hover:bg-trust-blue-hover disabled:opacity-50 flex items-center gap-2">Select Delivery Day</button>
+          </div>
         </div>
       )}
 
       {step === 3 && (
         <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-          <h2 className="font-bold text-2xl mb-6">Collection Details</h2>
+          <h2 className="font-bold text-2xl mb-6">Select Delivery Day</h2>
+          <p className="text-gray-600 mb-6">When would you like us to deliver your cleaned items?</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            {postcodeResult?.deliverySlots && postcodeResult.deliverySlots.length > 0 ? (
+              postcodeResult.deliverySlots.map((slot: any) => (
+                <button
+                  key={slot.slot_id}
+                  onClick={() => setSelectedDeliverySlot(slot.slot_id)}
+                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === slot.slot_id ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
+                >
+                  <div className="font-bold text-lg mb-1">{slot.day_name}</div>
+                  <div className="flex items-center gap-2 text-sm opacity-80">
+                    <Clock size={16} /> {slot.label}
+                  </div>
+                  {selectedDeliverySlot === slot.slot_id && <div className="absolute top-2 right-2 bg-eco-green text-white rounded-full p-1"><Check size={12} /></div>}
+                </button>
+              ))
+            ) : availableSlots.filter(s => s.type === 'delivery').length > 0 ? (
+              availableSlots.filter(s => s.type === 'delivery').map(slot => (
+                <button
+                  key={slot.id}
+                  onClick={() => setSelectedDeliverySlot(slot.id)}
+                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === slot.id ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
+                >
+                  <div className="font-bold text-lg mb-1">{slot.day}</div>
+                  <div className="flex items-center gap-2 text-sm opacity-80">
+                    <Clock size={16} /> {slot.label} - {getNextDate(slot.day)}
+                  </div>
+                  {selectedDeliverySlot === slot.id && <div className="absolute top-2 right-2 bg-eco-green text-white rounded-full p-1"><Check size={12} /></div>}
+                </button>
+              ))
+            ) : (
+              <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No delivery slots available.</p>
+            )}
+            {/* Only show Anytime if no postcode-specific slots AND no general delivery slots */}
+            {!(postcodeResult?.deliverySlots && postcodeResult.deliverySlots.length > 0) && availableSlots.filter(s => s.type === 'delivery').length === 0 && (
+              <button
+                onClick={() => setSelectedDeliverySlot('anytime')}
+                className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === 'anytime' ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
+              >
+                <div className="font-bold text-lg mb-1">Anytime</div>
+                <div className="flex items-center gap-2 text-sm opacity-80">
+                  <Clock size={16} /> Flexible (8am - 5pm)
+                </div>
+                {selectedDeliverySlot === 'anytime' && <div className="absolute top-2 right-2 bg-eco-green text-white rounded-full p-1"><Check size={12} /></div>}
+              </button>
+            )}
+          </div>
+          <div className="flex justify-between border-t pt-6">
+            <button onClick={() => setStep(2)} className="text-gray-500 font-bold hover:text-gray-700">Back</button>
+            <button onClick={() => setStep(4)} disabled={!selectedDeliverySlot} className="bg-trust-blue text-white px-8 py-3 rounded-lg font-bold hover:bg-trust-blue-hover disabled:opacity-50 flex items-center gap-2">Enter Details</button>
+          </div>
+        </div>
+      )}
+
+      {step === 4 && (
+        <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+          <h2 className="font-bold text-2xl mb-6">Your Details</h2>
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-bold text-gray-700 mb-1">Full Name</label><input type="text" className="w-full border rounded-lg p-3" value={customer.name} onChange={e => setCustomer({ ...customer, name: e.target.value })} /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">Phone</label><input type="tel" className="w-full border rounded-lg p-3" value={customer.phone} onChange={e => setCustomer({ ...customer, phone: e.target.value })} /></div></div>
             <div><label className="block text-sm font-bold text-gray-700 mb-1">Email</label><input type="email" className="w-full border rounded-lg p-3" value={customer.email} onBlur={checkLoyalty} onChange={e => setCustomer({ ...customer, email: e.target.value })} /></div>
-            <div><label className="block text-sm font-bold text-gray-700 mb-1">Collection Address</label><textarea className="w-full border rounded-lg p-3" rows={3} value={customer.address} onChange={e => setCustomer({ ...customer, address: e.target.value })}></textarea></div>
+            <div className="space-y-3">
+              <label className="block text-sm font-bold text-gray-700">Collection Address</label>
+              <div className="relative">
+                <MapPin size={18} className="absolute left-3 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  className="w-full border rounded-lg p-3 pl-10"
+                  placeholder="Address Line 1 (House number & street)"
+                  value={customer.address}
+                  onChange={e => setCustomer({ ...customer, address: e.target.value })}
+                />
+              </div>
+              <input
+                type="text"
+                className="w-full border rounded-lg p-3"
+                placeholder="Address Line 2 (Optional)"
+                value={customer.address2}
+                onChange={e => setCustomer({ ...customer, address2: e.target.value })}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  className="w-full border rounded-lg p-3"
+                  placeholder="City / Town"
+                  value={customer.city}
+                  onChange={e => setCustomer({ ...customer, city: e.target.value })}
+                />
+                <input
+                  type="text"
+                  className="w-full border rounded-lg p-3 uppercase"
+                  placeholder="Postcode"
+                  value={customer.postcode}
+                  onChange={e => setCustomer({ ...customer, postcode: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
             <div><label className="block text-sm font-bold text-gray-700 mb-1">Delivery Notes / Gate Code</label><textarea className="w-full border rounded-lg p-3" rows={2} value={customer.notes} placeholder="e.g. Gate code 1234" onChange={e => setCustomer({ ...customer, notes: e.target.value })}></textarea></div>
             {(recurring === 'weekly' || recurring === '2weekly') && (
               <div className="p-4 bg-purple-50 border border-purple-100 rounded-lg">
@@ -8518,10 +10005,10 @@ const BookingPage: React.FC<{
               {!currentUser && (<div className="space-y-3"><label className="flex items-center gap-3 cursor-pointer p-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-200 transition"><input type="checkbox" className="w-5 h-5 text-trust-blue rounded" checked={createAccount} onChange={e => setCreateAccount(e.target.checked)} /><div className="text-sm text-gray-700"><UserPlus size={16} className="inline mr-2" />Create an account</div></label>{createAccount && (<div className="ml-8 p-3 bg-blue-50 rounded-lg border border-blue-100 animate-fade-in"><label className="block text-xs font-bold text-gray-700 mb-1">Choose a Password</label><input type="password" className="w-full border rounded p-2 text-sm" placeholder="Enter password" value={accountPassword} onChange={e => setAccountPassword(e.target.value)} /></div>)}</div>)}
             </div>
             <div className="flex justify-between mt-8 pt-6 border-t">
-              <button onClick={() => setStep(2)} className="text-gray-500 font-bold hover:text-gray-700">Back</button>
+              <button onClick={() => setStep(3)} className="text-gray-500 font-bold hover:text-gray-700">Back</button>
               <button
                 onClick={submitOrder}
-                disabled={!customer.name || !customer.phone || !customer.address || loading}
+                disabled={!customer.name || !customer.phone || !customer.address || !customer.postcode || loading}
                 className={`${(companySettings?.stripe_connect_account_id && (totals.finalTotal > 0 || recurring !== 'none')) ? 'bg-trust-blue' : 'bg-green-600'} text-white px-8 py-3 rounded-lg font-bold hover:opacity-90 disabled:opacity-50 shadow-lg flex items-center gap-2 transition-all transform active:scale-95`}
               >
                 {loading ? <Loader2 className="animate-spin" size={18} /> : <CreditCard size={18} />}
@@ -9652,7 +11139,7 @@ const DriverPortalPage: React.FC<{ driver: any; onLogout: () => void; darkMode: 
   useEffect(() => {
     if (!driver || !driver.id) return;
 
-    console.log('--- DRIVER: SETTING UP REALTIME SUBSCRIPTION FOR ORDERS ---');
+    logger.debug('--- DRIVER: SETTING UP REALTIME SUBSCRIPTION FOR ORDERS ---');
 
     // Subscribe to changes in the cp_orders table
     const ordersSubscription = supabase
@@ -9665,7 +11152,7 @@ const DriverPortalPage: React.FC<{ driver: any; onLogout: () => void; darkMode: 
           table: 'cp_orders'
         },
         (payload) => {
-          console.log('Driver: Order change detected:', payload);
+          logger.debug('Driver: Order change detected:', payload);
           // Refresh deliveries when any change occurs
           fetchDeliveries();
         }
@@ -9674,7 +11161,7 @@ const DriverPortalPage: React.FC<{ driver: any; onLogout: () => void; darkMode: 
 
     // Cleanup subscription on unmount
     return () => {
-      console.log('--- DRIVER: CLEANING UP REALTIME SUBSCRIPTION ---');
+      logger.debug('--- DRIVER: CLEANING UP REALTIME SUBSCRIPTION ---');
       supabase.removeChannel(ordersSubscription);
     };
   }, [driver]);
@@ -10292,7 +11779,7 @@ const TrackOrderPage: React.FC = () => {
     try {
       // Search by readable_id (e.g., #HOFN, #Q1AM)
       const searchId = orderNumber.trim().toUpperCase().replace('#', '');
-      console.log('Tracking order:', searchId);
+      logger.debug('Tracking order:', searchId);
 
       const { data, error: fetchError } = await supabase
         .from('cp_orders')
@@ -10301,16 +11788,16 @@ const TrackOrderPage: React.FC = () => {
         .maybeSingle();
 
       if (fetchError) {
-        console.error('Fetch error:', fetchError);
+        logger.error('Fetch error:', fetchError);
         setError('An error occurred while fetching the order.');
       } else if (!data) {
         setError(`Order ${orderNumber} not found. Please double check the order number.`);
       } else {
-        console.log('Order found:', data);
+        logger.debug('Order found:', data);
         setOrder(data);
       }
     } catch (err) {
-      console.error('Tracking crash:', err);
+      logger.error('Tracking crash:', err);
       setError('An error occurred while tracking your order.');
     } finally {
       setLoading(false);
@@ -10964,14 +12451,14 @@ const MasterAdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
       });
 
       if (error) {
-        console.error('Delete error details:', error);
+        logger.error('Delete error details:', error);
         alert('Error deleting tenant: ' + (error.message || 'Unknown error'));
       } else {
         alert('Success: "' + name + '" has been removed from the platform.');
         fetchData(); // Refresh list without reloading page
       }
     } catch (err: any) {
-      console.error('System error:', err);
+      logger.error('System error:', err);
       alert('System Error: ' + err.message);
     } finally {
       setLoading(false);
@@ -11363,10 +12850,11 @@ const SaaSSignupModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignup
       if (tError) throw tError;
 
       // 3. Create Staff Admin for this tenant
+      const hashedAdminPassword = await hashPassword(formData.password);
       const staffAdmin = {
         name: formData.businessName + ' Admin',
         login_id: formData.email,
-        hashed_password: formData.password, // In production, hash this!
+        hashed_password: hashedAdminPassword,
         role: 'super_admin',
         tenant_id: tenant.id,
         is_active: true
@@ -11585,8 +13073,24 @@ const App: React.FC = () => {
 
       if (subdomain) {
         if (subdomain === 'master') {
-          const isMaster = localStorage.getItem('master_admin_auth') === 'true';
-          if (isMaster) {
+          // Validate session token with expiry check
+          let isValidSession = false;
+          try {
+            const sessionData = sessionStorage.getItem('master_admin_session');
+            if (sessionData) {
+              const { token, expiry } = JSON.parse(sessionData);
+              if (token && expiry && Date.now() < expiry) {
+                isValidSession = true;
+              } else {
+                // Session expired, clear it
+                sessionStorage.removeItem('master_admin_session');
+              }
+            }
+          } catch (e) {
+            sessionStorage.removeItem('master_admin_session');
+          }
+
+          if (isValidSession) {
             setUserRole('master_admin');
             setCurrentPage('master-admin');
           } else {
@@ -11679,6 +13183,7 @@ const App: React.FC = () => {
 
   const handleMasterAuth = async () => {
     try {
+      // Verify pin against database
       const { data, error } = await supabase
         .from('cp_admin_auth')
         .select('pin_code')
@@ -11686,7 +13191,16 @@ const App: React.FC = () => {
         .single();
 
       if (data && !error) {
-        localStorage.setItem('master_admin_auth', 'true');
+        // Generate a secure session token instead of simple boolean
+        const sessionToken = crypto.randomUUID() + '-' + Date.now();
+        const sessionExpiry = Date.now() + (4 * 60 * 60 * 1000); // 4 hour expiry
+
+        // Store session with expiry
+        sessionStorage.setItem('master_admin_session', JSON.stringify({
+          token: sessionToken,
+          expiry: sessionExpiry
+        }));
+
         setUserRole('master_admin');
         setCurrentPage('master-admin');
         setMasterAuthOpen(false);
@@ -11736,7 +13250,7 @@ const App: React.FC = () => {
       <main>
         {currentPage === 'master-admin' && userRole === 'master_admin' ? (
           <MasterAdminDashboard onLogout={() => {
-            localStorage.removeItem('master_admin_auth');
+            sessionStorage.removeItem('master_admin_session');
             setUserRole(null);
             window.location.reload();
           }} />

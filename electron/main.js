@@ -3,6 +3,10 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+// Thermal printer support modules
+const windowsPrinter = require('./windows-printer');
+const printerConfig = require('./printer-config');
+
 // Keep a global reference of the window object
 let mainWindow;
 let printWindow;
@@ -272,7 +276,7 @@ function getSplashHtml() {
       <p class="loading-text">Loading...</p>
     </div>
   </div>
-  <div class="version">v1.0.0</div>
+  <div class="version">v1.2.5</div>
   <div class="copyright">© 2024 Posso</div>
 </body>
 </html>`;
@@ -352,33 +356,33 @@ function createPrintWindow() {
   });
 }
 
-// Generate label HTML for Brother QL800 - Compact format with QR code
+// Generate Btag (Bag Tag) HTML for Brother QL800 - 62mm label with barcode
+// Used for bags containing customer garments
 function generateLabelHtml(tagData) {
   const {
-    storeName,
-    ticketNumber,
-    customerName,
-    customerPhone,
-    customerAddress,
-    itemCount,
-    items,
-    itemsSummary,
-    dueDate,
-    notes,
-    orderId,
-    qrData
+    ticketNumber = '---',
+    customerName = 'Walk-in',
+    customerPhone = '',
+    storeName = '',
+    storeAddress = '',
+    itemCount = 0,
+    items = '',
+    dueDate = 'TBD',
+    notes = ''
   } = tagData;
 
-  // QR code content
-  const qrContent = qrData || orderId || ticketNumber || 'NO-ID';
-
-  // Format items for display - handle both string and HTML formats
-  let formattedItems = 'No items';
-  if (itemsSummary) {
-    formattedItems = itemsSummary;
-  } else if (items) {
-    formattedItems = items.split(',').map(i => i.trim()).join('<br>');
+  // Parse items for display (handle string or array)
+  let itemsList = '';
+  if (items) {
+    if (typeof items === 'string') {
+      itemsList = items;
+    } else if (Array.isArray(items)) {
+      itemsList = items.map(i => `${i.quantity || 1}x ${i.name || i.service_name || 'Item'}`).join(', ');
+    }
   }
+
+  // Barcode content - use ticket number
+  const barcodeContent = ticketNumber.toString().replace('#', '');
 
   return `
 <!DOCTYPE html>
@@ -388,114 +392,143 @@ function generateLabelHtml(tagData) {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page { size: 62mm auto; margin: 0; }
-    @media print { html, body { width: 62mm; margin: 0; padding: 0; } }
+    @media print { body { width: 62mm; margin: 0; padding: 0; } }
     body {
       font-family: Arial, sans-serif;
       width: 62mm;
-      padding: 5mm 2mm 30mm 2mm;
+      padding: 2mm;
       background: white;
       color: black;
       font-size: 9pt;
     }
-    .tag-container {
+    .btag-container {
       width: 100%;
-      border: 1.5px solid #000;
-      padding: 3mm;
-      page-break-inside: avoid;
-      margin-top: 2mm;
+      border: 2px solid #000;
+      padding: 2mm;
+    }
+    .store-header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 2mm;
+      margin-bottom: 2mm;
     }
     .store-name {
-      text-align: center;
       font-size: 12pt;
       font-weight: bold;
-      border-bottom: 2px solid #000;
-      padding-bottom: 1mm;
-      margin-bottom: 1.5mm;
       text-transform: uppercase;
     }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid #000;
-      padding-bottom: 1.5mm;
-      margin-bottom: 1.5mm;
+    .store-address {
+      font-size: 8pt;
+      color: #333;
     }
-    .ticket-number { font-size: 16pt; font-weight: bold; }
+    .order-section {
+      text-align: center;
+      border-bottom: 1px dashed #000;
+      padding: 2mm 0;
+      margin-bottom: 2mm;
+    }
+    .order-number {
+      font-size: 18pt;
+      font-weight: bold;
+    }
     .item-count {
-      font-size: 11pt;
+      font-size: 14pt;
+      font-weight: bold;
       background: #000;
       color: #fff;
       padding: 1mm 3mm;
-      font-weight: bold;
+      display: inline-block;
+      margin-top: 1mm;
     }
     .customer-section {
-      border-bottom: 1px dashed #666;
-      padding-bottom: 1.5mm;
-      margin-bottom: 1.5mm;
-    }
-    .customer-name { font-size: 12pt; font-weight: bold; }
-    .customer-phone { font-size: 9pt; color: #333; }
-    .items-section {
-      border-bottom: 1px dashed #666;
-      padding-bottom: 1.5mm;
-      margin-bottom: 1.5mm;
-    }
-    .items-title {
-      font-size: 8pt;
-      font-weight: bold;
-      color: #666;
-      text-transform: uppercase;
-      margin-bottom: 1mm;
-    }
-    .items-list { font-size: 10pt; font-weight: bold; line-height: 1.4; }
-    .due-section {
-      text-align: center;
-      border-bottom: 1px dashed #666;
-      padding-bottom: 1.5mm;
+      border-bottom: 1px dashed #000;
+      padding-bottom: 2mm;
       margin-bottom: 2mm;
     }
-    .due-date { font-size: 11pt; font-weight: bold; }
-    .notes { font-size: 8pt; color: #666; font-style: italic; margin-top: 1mm; }
-    .qr-section { text-align: center; padding-top: 1mm; }
-    .qr-code { width: 25mm; height: 25mm; margin: 0 auto; }
-    .qr-code svg { width: 100%; height: 100%; }
-    .scan-text { font-size: 7pt; color: #666; margin-top: 1mm; }
+    .customer-name {
+      font-size: 11pt;
+      font-weight: bold;
+    }
+    .customer-phone {
+      font-size: 10pt;
+    }
+    .items-section {
+      border-bottom: 1px dashed #000;
+      padding-bottom: 2mm;
+      margin-bottom: 2mm;
+      font-size: 9pt;
+    }
+    .items-label {
+      font-weight: bold;
+      margin-bottom: 1mm;
+    }
+    .items-list {
+      font-size: 8pt;
+      line-height: 1.3;
+    }
+    .due-section {
+      text-align: center;
+      font-size: 10pt;
+      font-weight: bold;
+      margin-bottom: 2mm;
+    }
+    .barcode-section {
+      text-align: center;
+      padding: 2mm 0;
+    }
+    .barcode-section img {
+      max-width: 100%;
+      height: 40px;
+    }
+    .barcode-text {
+      font-size: 10pt;
+      font-weight: bold;
+      margin-top: 1mm;
+    }
+    .bottom-space {
+      height: 5mm;
+    }
   </style>
 </head>
 <body>
-  <div class="tag-container">
-    <div class="store-name">${storeName || 'Dry Cleaners'}</div>
-    <div class="header">
-      <span class="ticket-number">#${ticketNumber || '---'}</span>
-      <span class="item-count">${itemCount || 0} pcs</span>
+  <div class="btag-container">
+    ${storeName ? `
+    <div class="store-header">
+      <div class="store-name">${storeName}</div>
+      ${storeAddress ? `<div class="store-address">${storeAddress}</div>` : ''}
     </div>
+    ` : ''}
+
+    <div class="order-section">
+      <div class="order-number">ORDER #${ticketNumber}</div>
+      <div class="item-count">${itemCount} ITEM${itemCount !== 1 ? 'S' : ''}</div>
+    </div>
+
     <div class="customer-section">
-      <div class="customer-name">${customerName || 'Walk-in'}</div>
-      ${customerPhone ? `<div class="customer-phone">${customerPhone}</div>` : ''}
+      <div class="customer-name">${customerName}</div>
+      ${customerPhone ? `<div class="customer-phone">Tel: ${customerPhone}</div>` : ''}
     </div>
+
+    ${itemsList ? `
     <div class="items-section">
-      <div class="items-title">Items</div>
-      <div class="items-list">${formattedItems}</div>
+      <div class="items-label">Items:</div>
+      <div class="items-list">${itemsList}</div>
     </div>
-    <div class="due-section">
-      <div class="due-date">Due: ${dueDate || 'TBD'}</div>
-      ${notes ? `<div class="notes">${notes}</div>` : ''}
+    ` : ''}
+
+    ${dueDate && dueDate !== 'TBD' ? `
+    <div class="due-section">Ready by: ${dueDate}</div>
+    ` : ''}
+
+    ${notes ? `<div style="font-size: 8pt; font-style: italic; margin-bottom: 2mm;">Note: ${notes}</div>` : ''}
+
+    <div class="barcode-section">
+      <img src="https://barcodeapi.org/api/128/${encodeURIComponent(barcodeContent)}" alt="Barcode" />
+      <div class="barcode-text">${ticketNumber}</div>
     </div>
-    <div class="qr-section">
-      <div class="qr-code" id="qrcode"></div>
-      <div class="scan-text">Scan QR: ${qrContent}</div>
-    </div>
+
+    <div class="bottom-space"></div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-  <script>
-    (function() {
-      var qr = qrcode(0, 'M');
-      qr.addData('${qrContent}');
-      qr.make();
-      document.getElementById('qrcode').innerHTML = qr.createSvgTag(3, 0);
-    })();
-  </script>
 </body>
 </html>
   `;
@@ -504,12 +537,12 @@ function generateLabelHtml(tagData) {
 // Generate garment tag HTML - compact tag, one per item with position indicator
 function generateGarmentTagHtml(tagData) {
   const {
-    ticketNumber,
-    customerName,
-    dueDate,
-    itemName,
-    itemIndex,
-    itemTotal
+    ticketNumber = '---',
+    customerName = 'Walk-in',
+    itemName = 'Item',
+    dueDate = 'TBD',
+    tagNumber = 1,
+    totalTags = 1
   } = tagData;
 
   return `
@@ -519,64 +552,56 @@ function generateGarmentTagHtml(tagData) {
   <meta charset="UTF-8">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page { size: 30mm 50mm; margin: 0; }
-    @media print { html, body { width: 30mm; height: 50mm; margin: 0; padding: 0; } }
+    @page { size: 62mm auto; margin: 0; }
+    @media print { body { width: 62mm; margin: 0; padding: 0; } }
     body {
       font-family: Arial, sans-serif;
-      width: 30mm;
-      height: 50mm;
-      padding: 1mm;
+      width: 62mm;
+      padding: 2mm;
       background: white;
       color: black;
     }
     .garment-tag {
       width: 100%;
-      height: 100%;
-      border: 1.5px solid #000;
-      padding: 1mm;
+      border: 2px solid #000;
+      padding: 2mm;
+      text-align: center;
     }
     .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid #000;
-      padding-bottom: 0.5mm;
-      margin-bottom: 1mm;
+      border-bottom: 2px solid #000;
+      padding-bottom: 1mm;
+      margin-bottom: 2mm;
     }
     .ticket-num {
-      font-size: 8pt;
+      font-size: 14pt;
       font-weight: bold;
     }
     .position {
-      font-size: 10pt;
+      font-size: 12pt;
       font-weight: bold;
       background: #000;
       color: #fff;
-      padding: 0.5mm 1.5mm;
+      padding: 1mm 3mm;
     }
     .customer {
-      font-size: 7pt;
+      font-size: 11pt;
       font-weight: bold;
-      text-align: center;
-      border-bottom: 1px dashed #999;
-      padding-bottom: 1mm;
-      margin-bottom: 1mm;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      margin-bottom: 2mm;
     }
     .item-name {
-      font-size: 6pt;
-      font-weight: bold;
-      text-align: center;
-      background: #eee;
-      padding: 1mm;
-      margin-bottom: 1mm;
-      word-wrap: break-word;
+      font-size: 18pt;
+      font-weight: 900;
+      background: #f0f0f0;
+      padding: 2mm;
+      margin-bottom: 2mm;
+      border: 1px dashed #000;
+      text-transform: uppercase;
     }
     .due-date {
-      font-size: 6pt;
-      text-align: center;
+      font-size: 10pt;
       font-weight: bold;
     }
   </style>
@@ -584,12 +609,12 @@ function generateGarmentTagHtml(tagData) {
 <body>
   <div class="garment-tag">
     <div class="header">
-      <span class="ticket-num">#${ticketNumber || '---'}</span>
-      <span class="position">${itemIndex}/${itemTotal}</span>
+      <span class="ticket-num">#${ticketNumber}</span>
+      <span class="position">${tagNumber}/${totalTags}</span>
     </div>
-    <div class="customer">${customerName || 'Walk-in'}</div>
-    <div class="item-name">${itemName || 'Item'}</div>
-    <div class="due-date">Due: ${dueDate || 'TBD'}</div>
+    <div class="customer">${customerName.substring(0, 18)}</div>
+    <div class="item-name">${itemName}</div>
+    <div class="due-date">READY BY: ${dueDate}</div>
   </div>
 </body>
 </html>
@@ -886,6 +911,299 @@ function setupIpcHandlers() {
   ipcMain.handle('open-external', async (event, url) => {
     shell.openExternal(url);
     return { success: true };
+  });
+
+  // ========================================
+  // THERMAL PRINTER HANDLERS (Bixolon 275iii)
+  // ========================================
+
+  // Get list of Windows printers (using Electron's built-in detection)
+  ipcMain.handle('get-windows-printers', async () => {
+    try {
+      // Use Electron's built-in printer detection - more reliable than PowerShell
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      return {
+        success: true,
+        printers: printers.map(p => ({
+          name: p.name,
+          displayName: p.displayName,
+          description: p.description,
+          status: p.status,
+          isDefault: p.isDefault
+        }))
+      };
+    } catch (error) {
+      console.error('Error getting Windows printers:', error);
+      return { success: false, error: error.message, printers: [] };
+    }
+  });
+
+  // Find thermal printers (using Electron's built-in detection)
+  ipcMain.handle('find-thermal-printers', async () => {
+    try {
+      const printers = await mainWindow.webContents.getPrintersAsync();
+      const thermalKeywords = ['bixolon', 'srp', 'epson', 'tm-', 'star', 'tsp', 'citizen', 'thermal', 'receipt', 'pos'];
+
+      const thermalPrinters = printers.filter(p => {
+        const name = (p.name || '').toLowerCase();
+        return thermalKeywords.some(kw => name.includes(kw));
+      });
+
+      return {
+        success: true,
+        printers: thermalPrinters.map(p => ({
+          name: p.name,
+          displayName: p.displayName,
+          description: p.description,
+          status: p.status,
+          isDefault: p.isDefault
+        }))
+      };
+    } catch (error) {
+      console.error('Error finding thermal printers:', error);
+      return { success: false, error: error.message, printers: [] };
+    }
+  });
+
+  // Get printer assignments
+  ipcMain.handle('get-printer-assignments', async () => {
+    try {
+      const assignments = printerConfig.loadPrinterAssignments();
+      return { success: true, assignments };
+    } catch (error) {
+      console.error('Error loading printer assignments:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Set printer assignments
+  ipcMain.handle('set-printer-assignments', async (event, assignments) => {
+    try {
+      const result = printerConfig.savePrinterAssignments(assignments);
+      return result;
+    } catch (error) {
+      console.error('Error saving printer assignments:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Test thermal printer
+  ipcMain.handle('test-thermal-printer', async (event, printerName) => {
+    try {
+      if (!printerName) {
+        return { success: false, error: 'No printer specified' };
+      }
+      const result = await windowsPrinter.testPrinter(printerName);
+      return result;
+    } catch (error) {
+      console.error('Error testing printer:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Print customer receipt (thermal)
+  ipcMain.handle('print-customer-receipt', async (event, data) => {
+    try {
+      const assignments = printerConfig.loadPrinterAssignments();
+      const printerName = assignments.receiptPrinter;
+
+      if (!printerName) {
+        return { success: false, error: 'No receipt printer assigned' };
+      }
+
+      const result = await windowsPrinter.printCustomerReceipt(printerName, data);
+      return result;
+    } catch (error) {
+      console.error('Error printing customer receipt:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Print shop copy (thermal)
+  ipcMain.handle('print-shop-copy', async (event, data) => {
+    try {
+      const assignments = printerConfig.loadPrinterAssignments();
+      const printerName = assignments.receiptPrinter;
+
+      if (!printerName) {
+        return { success: false, error: 'No receipt printer assigned' };
+      }
+
+      const result = await windowsPrinter.printShopCopy(printerName, data);
+      return result;
+    } catch (error) {
+      console.error('Error printing shop copy:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Print DStubs/garment tags to dot-matrix printer (one per item)
+  ipcMain.handle('print-thermal-garment-tags', async (event, tags) => {
+    try {
+      const assignments = printerConfig.loadPrinterAssignments();
+      // Use dedicated dstubsPrinter (dot-matrix 76mm)
+      const printerName = assignments.dstubsPrinter;
+
+      if (!printerName) {
+        return { success: false, error: 'No DStubs printer assigned (configure in Settings)' };
+      }
+
+      if (!Array.isArray(tags) || tags.length === 0) {
+        return { success: false, error: 'No tags to print' };
+      }
+
+      const result = await windowsPrinter.printGarmentTags(printerName, tags);
+      return result;
+    } catch (error) {
+      console.error('Error printing DStubs:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Print full order (receipt + shop copy + DStubs)
+  ipcMain.handle('print-full-order', async (event, data) => {
+    try {
+      const assignments = printerConfig.loadPrinterAssignments();
+
+      const printers = {
+        receiptPrinter: assignments.receiptPrinter,  // Thermal 80mm for receipts
+        dstubsPrinter: assignments.dstubsPrinter     // Dot-matrix 76mm for DStubs
+      };
+
+      if (!printers.receiptPrinter && !printers.dstubsPrinter) {
+        return { success: false, error: 'No printers assigned' };
+      }
+
+      const result = await windowsPrinter.printFullOrder(data, printers);
+      return result;
+    } catch (error) {
+      console.error('Error printing full order:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Open cash drawer
+  ipcMain.handle('open-cash-drawer', async () => {
+    try {
+      const assignments = printerConfig.loadPrinterAssignments();
+      const printerName = assignments.receiptPrinter;
+
+      if (!printerName) {
+        return { success: false, error: 'No receipt printer assigned for cash drawer' };
+      }
+
+      const result = await windowsPrinter.openCashDrawer(printerName);
+      return result;
+    } catch (error) {
+      console.error('Error opening cash drawer:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // Print raw data to specific printer (advanced)
+  ipcMain.handle('print-raw', async (event, { printerName, data }) => {
+    try {
+      if (!printerName) {
+        return { success: false, error: 'No printer specified' };
+      }
+
+      // Convert hex string to buffer if needed
+      let buffer;
+      if (typeof data === 'string') {
+        buffer = Buffer.from(data, 'hex');
+      } else if (Buffer.isBuffer(data)) {
+        buffer = data;
+      } else if (Array.isArray(data)) {
+        buffer = Buffer.from(data);
+      } else {
+        return { success: false, error: 'Invalid data format' };
+      }
+
+      const result = await windowsPrinter.printRawDirect(printerName, buffer);
+      return result;
+    } catch (error) {
+      console.error('Error printing raw data:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // ========================================
+  // GOOGLE MAPS API (Distance Matrix)
+  // ========================================
+
+  // Calculate distance between two postcodes using Google Maps API
+  ipcMain.handle('calculate-distance', async (_event, { origin, destination, apiKey }) => {
+    try {
+      if (!origin || !destination || !apiKey) {
+        return { error: 'Missing required parameters' };
+      }
+
+      console.log(`Calculating distance: ${origin} -> ${destination}`);
+      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&key=${apiKey}&units=imperial`;
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+        console.error('Google Maps API Error:', data);
+        return { error: data.error_message || data.status };
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Distance Calculation Error:', error);
+      return { error: error.message };
+    }
+  });
+
+  // Geocode an address to lat/lng
+  ipcMain.handle('geocode-address', async (_event, { address, apiKey }) => {
+    try {
+      if (!address || !apiKey) {
+        return { error: 'Missing required parameters' };
+      }
+
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&region=uk&key=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.status === 'OK' && data.results.length > 0) {
+        return {
+          success: true,
+          location: data.results[0].geometry.location,
+          formatted_address: data.results[0].formatted_address
+        };
+      }
+
+      return { error: data.status || 'No results found' };
+    } catch (error) {
+      console.error('Geocoding Error:', error);
+      return { error: error.message };
+    }
+  });
+
+  // Google Places Autocomplete (for address suggestions)
+  ipcMain.handle('places-autocomplete', async (_event, { input, apiKey, sessionToken }) => {
+    try {
+      if (!input || !apiKey) {
+        return { predictions: [] };
+      }
+
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(input)}&components=country:gb&sessiontoken=${sessionToken || ''}&key=${apiKey}`;
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.status === 'OK') {
+        return { predictions: data.predictions };
+      } else if (data.status === 'ZERO_RESULTS') {
+        return { predictions: [] };
+      }
+
+      return { error: data.status, predictions: [] };
+    } catch (error) {
+      console.error('Places Autocomplete Error:', error);
+      return { error: error.message, predictions: [] };
+    }
   });
 }
 
