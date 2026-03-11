@@ -334,13 +334,12 @@ function buildCustomerReceipt(data, profile = null) {
   const parts = [];
   const lineWidth = profile?.charsPerLine ?? 42; // Use profile or default 80mm thermal paper
 
-  // Initialize
+  // Initialize - use PC437 for pound sign (0x9C), DON'T use UK charset (converts # to £)
   parts.push(ESCPOS.INIT);
-  parts.push(ESCPOS.SET_CHARSET_UK);
-  parts.push(ESCPOS.SELECT_CODEPAGE_CP850);
+  parts.push(ESCPOS.SELECT_CODEPAGE_PC437);
   parts.push(ESCPOS.ALIGN_CENTER);
 
-  // Store header (Small but bold)
+  // Store header (Small but bold) - no extra spacing at top
   parts.push(ESCPOS.BOLD_ON);
   if (storeName.length > 20) {
     parts.push(ESCPOS.FONT_B); // Use smaller font if name is long
@@ -358,7 +357,6 @@ function buildCustomerReceipt(data, profile = null) {
   if (storePhone) {
     parts.push(text(`Tel: ${storePhone}\n`));
   }
-  parts.push(text('\n'));
 
   // Order info
   parts.push(ESCPOS.BOLD_ON);
@@ -472,8 +470,8 @@ function buildShopCopy(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile
-  // Shop copy needs more feed (10 lines) to ensure items don't get cut off
-  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 2 : 10;
+  // Shop copy needs more feed (11 lines) to ensure items don't get cut off
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 3 : 11;
   const fullCutCmd = profile?.commands?.fullCut
     ? Buffer.from(profile.commands.fullCut)
     : ESCPOS.CUT_PAPER;
