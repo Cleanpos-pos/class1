@@ -152,9 +152,12 @@ function buildGarmentTagContent(data, profile = null) {
   parts.push(ESCPOS.NORMAL_SIZE); // Revert size before newline to eliminate 2x gap
   parts.push(Buffer.from('\n'));
 
-  // Line 3: Customer name
+  // Line 3: Customer name (BIGGER - double height)
   parts.push(ESCPOS.BOLD_OFF);
-  parts.push(Buffer.from(customerName.substring(0, 24) + '\n'));
+  parts.push(ESCPOS.DOUBLE_HEIGHT);
+  parts.push(Buffer.from(customerName.substring(0, 24)));
+  parts.push(ESCPOS.NORMAL_SIZE); // Reset before newline
+  parts.push(Buffer.from('\n'));
 
   // Feed lines before cut (printer-specific - from profile or default 5 for Bixolon)
   parts.push(feed(delayBeforeCut));
@@ -206,9 +209,12 @@ function buildGarmentTagContent40mm(data, profile = null) {
   parts.push(ESCPOS.BOLD_ON);
   parts.push(Buffer.from(itemName.toUpperCase().substring(0, 12) + '\n'));
 
-  // Line 3: Customer name (abbreviated)
+  // Line 3: Customer name (abbreviated, BIGGER)
   parts.push(ESCPOS.BOLD_OFF);
-  parts.push(Buffer.from(customerName.substring(0, 12) + '\n'));
+  parts.push(ESCPOS.DOUBLE_HEIGHT);
+  parts.push(Buffer.from(customerName.substring(0, 12)));
+  parts.push(ESCPOS.NORMAL_SIZE);
+  parts.push(Buffer.from('\n'));
 
   // Feed lines before cut (printer-specific - from profile or default 5 for Bixolon)
   parts.push(feed(delayBeforeCut));
@@ -464,7 +470,8 @@ function buildShopCopy(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile
-  const delayBeforeCut = profile?.delayBeforeCut ?? 8;
+  // Shop copy needs more feed (10 lines) to ensure items don't get cut off
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 2 : 10;
   const fullCutCmd = profile?.commands?.fullCut
     ? Buffer.from(profile.commands.fullCut)
     : ESCPOS.CUT_PAPER;
@@ -472,16 +479,16 @@ function buildShopCopy(data, profile = null) {
   const parts = [];
   const lineWidth = profile?.charsPerLine ?? 42;
 
-  // Initialize
+  // Initialize - no extra feeds at top
   parts.push(ESCPOS.INIT);
   parts.push(ESCPOS.SELECT_CODEPAGE_PC437);
   parts.push(ESCPOS.ALIGN_CENTER);
 
-  // Header
+  // Header - start printing immediately
   parts.push(ESCPOS.DOUBLE_SIZE);
   parts.push(text('SHOP COPY\n'));
   parts.push(ESCPOS.NORMAL_SIZE);
-  
+
   // Store header (Small but bold)
   parts.push(ESCPOS.BOLD_ON);
   if (storeName.length > 20) {
