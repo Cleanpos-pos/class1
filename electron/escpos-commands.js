@@ -126,15 +126,15 @@ function buildGarmentTagContent(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  // DStubs need MORE feed (profile + 3, or 8 minimum) to clear print head to cutter gap
-  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 3 : 8;
+  // Feed 6 lines before cut to clear print head to cutter gap
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 1 : 6;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
 
   const parts = [];
 
-  // Reset formatting for this tag (no INIT - handled by batch)
+  // Reset formatting - no extra spacing at top
   parts.push(ESCPOS.NORMAL_SIZE);
   parts.push(ESCPOS.BOLD_OFF);
   parts.push(ESCPOS.ALIGN_CENTER);
@@ -182,15 +182,15 @@ function buildGarmentTagContent40mm(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  // DStubs need MORE feed (profile + 3, or 8 minimum) to clear print head to cutter gap
-  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 3 : 8;
+  // Feed 6 lines before cut to clear print head to cutter gap
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 1 : 6;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
 
   const parts = [];
 
-  // Reset formatting for this tag (no INIT - handled by batch)
+  // Reset formatting - no extra spacing at top
   parts.push(ESCPOS.NORMAL_SIZE);
   parts.push(ESCPOS.BOLD_OFF);
   parts.push(ESCPOS.ALIGN_CENTER);
