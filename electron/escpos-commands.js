@@ -135,7 +135,7 @@ function buildGarmentTag(data) {
   parts.push(ESCPOS.BOLD_ON);
 
   // Feed at top - push content past the cutter from previous cut
-  parts.push(feed(1));
+  parts.push(feed(2));
 
   // Line 1: ORDER # and POSITION - LARGE (same line)
   parts.push(ESCPOS.DOUBLE_SIZE);
@@ -247,8 +247,7 @@ function buildCustomerReceipt(data) {
     parts.push(ESCPOS.BOLD_OFF);
   }
 
-  // Separator
-  parts.push(separator('=', lineWidth));
+  parts.push(text('\n'));
 
   // Items with prices
   parts.push(ESCPOS.ALIGN_LEFT);
@@ -269,8 +268,7 @@ function buildCustomerReceipt(data) {
     }
   });
 
-  // Separator
-  parts.push(separator('-', lineWidth));
+  parts.push(text('\n'));
 
   // Subtotal
   parts.push(text(padLine('Subtotal:', `£${subtotal.toFixed(2)}`, lineWidth) + '\n'));
@@ -282,7 +280,6 @@ function buildCustomerReceipt(data) {
   }
 
   // Total
-  parts.push(separator('-', lineWidth));
   parts.push(ESCPOS.BOLD_ON);
   parts.push(ESCPOS.DOUBLE_HEIGHT);
   parts.push(text(padLine('TOTAL:', `£${total.toFixed(2)}`, lineWidth) + '\n'));
@@ -291,7 +288,6 @@ function buildCustomerReceipt(data) {
 
   // Payment info
   if (amountPaid > 0) {
-    parts.push(separator('-', lineWidth));
     parts.push(text(padLine(`${paymentMethod}:`, `£${amountPaid.toFixed(2)}`, lineWidth) + '\n'));
     if (change > 0) {
       parts.push(text(padLine('Change:', `£${change.toFixed(2)}`, lineWidth) + '\n'));
@@ -310,7 +306,6 @@ function buildCustomerReceipt(data) {
 
   // Footer section
   parts.push(text('\n'));
-  parts.push(separator('-', lineWidth));
   parts.push(ESCPOS.ALIGN_CENTER);
   parts.push(text(footer + '\n'));
   parts.push(text('\n'));
@@ -375,8 +370,7 @@ function buildShopCopy(data) {
   parts.push(ESCPOS.BOLD_OFF);
   parts.push(text(`${date} ${time}\n`));
 
-  // Separator
-  parts.push(separator('=', lineWidth));
+  parts.push(text('\n'));
 
   // Customer section
   parts.push(ESCPOS.ALIGN_LEFT);
@@ -392,8 +386,7 @@ function buildShopCopy(data) {
     addressLines.forEach(line => parts.push(text(line + '\n')));
   }
 
-  // Separator
-  parts.push(separator('-', lineWidth));
+  parts.push(text('\n'));
 
   // Items (NO PRICES)
   parts.push(ESCPOS.BOLD_ON);
@@ -414,7 +407,7 @@ function buildShopCopy(data) {
 
   // Due date
   if (dueDate) {
-    parts.push(separator('-', lineWidth));
+    parts.push(text('\n'));
     parts.push(ESCPOS.ALIGN_CENTER);
     parts.push(ESCPOS.BOLD_ON);
     parts.push(ESCPOS.DOUBLE_HEIGHT);
@@ -425,7 +418,7 @@ function buildShopCopy(data) {
 
   // Notes section
   if (notes) {
-    parts.push(separator('-', lineWidth));
+    parts.push(text('\n'));
     parts.push(ESCPOS.ALIGN_LEFT);
     parts.push(ESCPOS.BOLD_ON);
     parts.push(text('NOTES:\n'));
@@ -441,7 +434,7 @@ function buildShopCopy(data) {
   }
 
   // Feed and cut
-  parts.push(feed(4));
+  parts.push(feed(6));
   parts.push(ESCPOS.CUT_PAPER);
 
   return Buffer.concat(parts);
