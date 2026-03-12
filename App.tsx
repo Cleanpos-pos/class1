@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle, XCircle, Hash, Delete } from 'lucide-react';
+import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle, XCircle, Hash, Delete, ImageIcon } from 'lucide-react';
 import jsQR from 'jsqr';
 // SECURITY WARNING: xlsx has known vulnerabilities (Prototype Pollution, ReDoS)
 // Consider replacing with 'exceljs' for production use
@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 import { Page, TimeSlot, CartItem, DeliveryOption, DiscountCode } from './types';
 import { PostcodeArea, PostcodeServiceSlot } from './types/postcode';
 import { supabase } from './supabaseClient';
-import { sendOrderConfirmation, sendBrevoEmail, sendCustomerSignupNotification } from './services/emailService';
+import { sendOrderConfirmation, sendBrevoEmail, sendCustomerSignupNotification, sendCustomerWelcomeEmail } from './services/emailService';
 import DeliveryMap from './components/DeliveryMap';
 import { hashPassword, verifyPassword } from './utils/passwordUtils';
 import logger from './utils/logger';
@@ -92,7 +92,7 @@ const SchemaMarkup: React.FC<{ tenant: any }> = ({ tenant }) => {
     "@context": "https://schema.org",
     "@type": "DryCleaningOrLaundry",
     "name": tenant.name,
-    "url": `https://${tenant.subdomain}.cleanpos.app`,
+    "url": `https://xp-clean.web.app/?tenant=${tenant.subdomain}`,
     "address": {
       "@type": "PostalAddress",
       "streetAddress": tenant.address,
@@ -101,7 +101,7 @@ const SchemaMarkup: React.FC<{ tenant: any }> = ({ tenant }) => {
       "addressCountry": "GB"
     },
     "telephone": tenant.phone,
-    "image": "https://cleanpos.app/logo.png"
+    "image": "https://xp-clean.web.app/logo.png"
   };
   return <script type="application/ld+json">{JSON.stringify(schema)}</script>;
 };
@@ -754,6 +754,31 @@ const Footer: React.FC<{
 }> = ({ tenant, setPage, onStaffLogin, onMasterAuth, settings }) => {
   const brandName = tenant?.name || 'CleanPOS';
 
+  // 5-tap security for login buttons
+  const [tapCounts, setTapCounts] = useState<{ [key: string]: number }>({});
+  const tapTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({});
+
+  const handleSecureTap = (buttonId: string, action: () => void) => {
+    const currentCount = (tapCounts[buttonId] || 0) + 1;
+
+    // Clear existing timeout for this button
+    if (tapTimeoutRef.current[buttonId]) {
+      clearTimeout(tapTimeoutRef.current[buttonId]);
+    }
+
+    if (currentCount >= 5) {
+      // 5 taps reached - trigger action and reset
+      setTapCounts(prev => ({ ...prev, [buttonId]: 0 }));
+      action();
+    } else {
+      // Update count and set timeout to reset after 2 seconds
+      setTapCounts(prev => ({ ...prev, [buttonId]: currentCount }));
+      tapTimeoutRef.current[buttonId] = setTimeout(() => {
+        setTapCounts(prev => ({ ...prev, [buttonId]: 0 }));
+      }, 2000);
+    }
+  };
+
   // Helper to get best available address
   const getAddress = () => {
     if (settings?.store_address) return settings.store_address;
@@ -762,7 +787,7 @@ const Footer: React.FC<{
   };
 
   const getPhone = () => settings?.store_phone || tenant?.phone || 'Contact Local Support';
-  const getEmail = () => settings?.store_email || tenant?.email || 'support@cleanpos.app';
+  const getEmail = () => settings?.store_email || tenant?.email || 'support@xp-clean.web.app';
 
   return (
     <footer className="text-white pt-24 pb-12 border-t border-gray-900" style={{ backgroundColor: settings?.footer_color || '#030712' }}>
@@ -826,16 +851,16 @@ const Footer: React.FC<{
             <span className="ml-2 px-2 py-0.5 bg-gray-900 rounded text-[10px] border border-gray-800 uppercase tracking-widest">SaaS Powered</span>
           </p>
           <div className="flex gap-6 items-center">
-            <button onClick={() => onStaffLogin('admin')} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
-              <Lock size={14} /> Admin Access
+            <button onClick={() => handleSecureTap('admin', () => onStaffLogin('admin'))} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
+              <Lock size={14} /> Admin Access {tapCounts['admin'] > 0 && tapCounts['admin'] < 5 && <span className="text-xs text-trust-blue">({tapCounts['admin']}/5)</span>}
             </button>
             {onMasterAuth && (
-              <button onClick={onMasterAuth} className="text-[10px] uppercase font-bold text-gray-800 hover:text-gray-700 transition">
-                Master System
+              <button onClick={() => handleSecureTap('master', onMasterAuth)} className="text-[10px] uppercase font-bold text-gray-800 hover:text-gray-700 transition">
+                Master System {tapCounts['master'] > 0 && tapCounts['master'] < 5 && <span className="text-trust-blue">({tapCounts['master']}/5)</span>}
               </button>
             )}
-            <button onClick={() => onStaffLogin('driver')} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
-              <Truck size={14} /> Driver Login
+            <button onClick={() => handleSecureTap('driver', () => onStaffLogin('driver'))} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
+              <Truck size={14} /> Driver Login {tapCounts['driver'] > 0 && tapCounts['driver'] < 5 && <span className="text-xs text-trust-blue">({tapCounts['driver']}/5)</span>}
             </button>
           </div>
         </div>
@@ -1210,6 +1235,7 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [welcomePopup, setWelcomePopup] = useState<{ show: boolean; code: string; name: string }>({ show: false, code: '', name: '' });
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1243,8 +1269,6 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
       if (!emailRegex.test(email) || email.length > 254) { setError('Invalid email format.'); setLoading(false); return; }
       // Validate password strength
       if (password.length < 8) { setError('Password must be at least 8 characters.'); setLoading(false); return; }
-      const { data: existingUser } = await supabase.from('cp_customers').select('id').eq('email', email.toLowerCase().trim()).eq('tenant_id', tenantId).single();
-      if (existingUser) { setError('Email already registered.'); setLoading(false); return; }
       // Hash password before storing
       const hashedPassword = await hashPassword(password);
       const { data, error: insertError } = await supabase.from('cp_customers').insert([{
@@ -1256,11 +1280,34 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
         tenant_id: tenantId
       }]).select().single();
       if (insertError || !data) {
-        setError('Failed to create account.');
+        if (insertError?.code === '23505' || insertError?.message?.includes('duplicate') || insertError?.code === '409') {
+          setError('Email already registered. Please log in.');
+        } else {
+          console.error('Account creation error:', insertError);
+          setError('Failed to create account.');
+        }
       } else {
+        // Notify store owner
         sendCustomerSignupNotification({ customerName: name, customerEmail: email, customerPhone: phone, storeEmail, storeName });
+
+        // Ensure SIGNUP10 voucher exists for this tenant (idempotent)
+        const welcomeCode = 'SIGNUP10';
+        await supabase.from('cp_discount_codes').upsert([{
+          code: welcomeCode,
+          discount_type: 'percentage',
+          discount_value: 10,
+          one_time_use: false,
+          active: true,
+          tenant_id: tenantId
+        }], { onConflict: 'tenant_id,code' }).select();
+
+        // Send welcome email with voucher
+        sendCustomerWelcomeEmail({ customerName: name, customerEmail: email, storeName, voucherCode: welcomeCode });
+
+        // Show welcome popup before closing
         onLogin(data);
-        onClose();
+        setLoading(false);
+        setWelcomePopup({ show: true, code: welcomeCode, name: name.split(' ')[0] });
       }
     } else {
       const { data, error } = await supabase.from('cp_customers').select('*').eq('email', email.toLowerCase().trim()).eq('tenant_id', tenantId).single();
@@ -1287,6 +1334,46 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
   };
 
   if (!isOpen) return null;
+
+  // Welcome popup after successful signup
+  if (welcomePopup.show) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm relative overflow-hidden animate-scale-in">
+          {/* Gradient header */}
+          <div className="bg-gradient-to-r from-trust-blue via-blue-500 to-eco-green p-6 text-center">
+            <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mx-auto mb-3">
+              <Gift size={32} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Welcome, {welcomePopup.name}!</h2>
+            <p className="text-white/80 text-sm mt-1">Your account has been created</p>
+          </div>
+
+          <div className="p-6 text-center">
+            <p className="text-gray-600 text-sm mb-4">As a thank you for joining, here's <strong>10% off</strong> your first order!</p>
+
+            <div className="bg-gradient-to-r from-blue-50 to-green-50 border-2 border-dashed border-trust-blue rounded-xl p-4 mb-4">
+              <p className="text-xs font-bold text-gray-500 uppercase mb-1">Your Voucher Code</p>
+              <p className="text-3xl font-black text-trust-blue tracking-wider">{welcomePopup.code}</p>
+              <p className="text-xs text-gray-500 mt-1">Apply at checkout for 10% off</p>
+            </div>
+
+            <div className="flex items-center gap-2 justify-center text-sm text-gray-500 mb-6">
+              <Mail size={14} />
+              <span>We've also emailed this code to you</span>
+            </div>
+
+            <button
+              onClick={() => { setWelcomePopup({ show: false, code: '', name: '' }); onClose(); }}
+              className="w-full bg-trust-blue text-white font-bold py-3.5 rounded-xl hover:bg-trust-blue-hover shadow-lg shadow-blue-500/20 transition-all active:scale-95"
+            >
+              Start Shopping
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
@@ -2005,8 +2092,8 @@ const BackOfficePage: React.FC<{
   };
 
   // Print DStubs - one stub per item with 1/5, 2/5 format
-  // Uses Bixolon dot-matrix 76mm printer for DStubs
-  const printDStubs = async (order: any) => {
+  // Uses Bixolon dot-matrix printer for DStubs (76mm default, 40mm optional)
+  const printDStubs = async (order: any, paperWidth: '76mm' | '40mm' = '76mm') => {
     let items: any[] = [];
     try {
       items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items || [];
@@ -2073,15 +2160,20 @@ const BackOfficePage: React.FC<{
             totalTags: item.total
           }));
 
-          const result = await (window as any).electronPrint.printThermalGarmentTags(dstubTags);
+          // Choose print function based on paper width
+          const printFn = paperWidth === '40mm'
+            ? (window as any).electronPrint.printThermalGarmentTags40mm
+            : (window as any).electronPrint.printThermalGarmentTags;
+
+          const result = await printFn(dstubTags);
           if (result.success) {
-            showPrintToast('success', `${expandedItems.length} DStubs sent to dot-matrix!`);
+            showPrintToast('success', `${expandedItems.length} DStubs (${paperWidth}) sent!`);
             return;
           }
           showPrintToast('error', 'DStub print failed: ' + (result.error || 'Unknown error'));
           return;
         } else {
-          showPrintToast('warning', 'No DStubs printer assigned. Go to Settings to configure Bixolon 76mm.');
+          showPrintToast('warning', 'No DStubs printer assigned. Go to Settings.');
           return;
         }
       } catch (e) {
@@ -2179,6 +2271,15 @@ const BackOfficePage: React.FC<{
       logger.error('Error printing receipts:', error);
       showPrintToast('error', 'Failed to print receipts');
     }
+  };
+
+  // Print All - Receipt + Shop Copy + DStubs (NOT Btags)
+  const printAll = async (order: any) => {
+    await printOrderReceipts(order);
+    // Delay to let printer finish receipts before DStubs start
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    await printDStubs(order);
+    showPrintToast('success', 'All prints sent!');
   };
 
   // Generate print tag HTML for browser fallback
@@ -2932,6 +3033,7 @@ const BackOfficePage: React.FC<{
 
     const { error } = await supabase.from('cp_services').insert([{
       category: newService.category,
+      subcategory: newService.subcategory || null,
       name: newService.name,
       price_numeric: priceNum,
       price_display: `£${priceNum.toFixed(2)}`,
@@ -3227,8 +3329,11 @@ const BackOfficePage: React.FC<{
     setIsSavingPromo(true);
     const { error } = await supabase.from('cp_app_settings').upsert(updates, { onConflict: 'tenant_id,key' });
     setIsSavingPromo(false);
-    if (!error) {
-      setSettings(toSave); // Update local state
+    if (error) {
+      console.error('Failed to save settings:', error);
+      alert('Failed to save settings. Please try again.');
+    } else {
+      setSettings(toSave);
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     }
@@ -3729,7 +3834,8 @@ const BackOfficePage: React.FC<{
       const titleIdx = headerRow.findIndex(h => h.includes('title'));
       const priceIdx = headerRow.findIndex(h => h.includes('price') || h.includes('pricelevel'));
       const categoryIdx = headerRow.findIndex(h => h.includes('category'));
-      const nameIdx = headerRow.findIndex(h => h.includes('name') || h.includes('service'));
+      const subcategoryIdx = headerRow.findIndex(h => h.includes('subcategory'));
+      const nameIdx = headerRow.findIndex(h => h.includes('name') || h.includes('service') || h.includes('item'));
 
       const isNewFormat = menu1Idx !== -1 && titleIdx !== -1 && priceIdx !== -1;
       const isOldFormat = categoryIdx !== -1 && nameIdx !== -1;
@@ -3745,6 +3851,7 @@ const BackOfficePage: React.FC<{
         if (isNewFormat) {
           // New format: Menu1, Menu2, Title, Pricelevel1
           const menu1 = String(row[menu1Idx] || '').trim();
+          const menu2 = menu2Idx !== -1 ? String(row[menu2Idx] || '').trim() : '';
           const title = String(row[titleIdx] || '').trim();
           const priceVal = row[priceIdx];
           const price = typeof priceVal === 'number' ? priceVal : parseFloat(String(priceVal || '').replace(/[^0-9.]/g, ''));
@@ -3752,6 +3859,7 @@ const BackOfficePage: React.FC<{
           if (menu1 && title && !isNaN(price)) {
             newServices.push({
               category: menu1,
+              subcategory: menu2 || null,
               name: title,
               price_numeric: price,
               price_display: `£${price.toFixed(2)}`,
@@ -3760,15 +3868,17 @@ const BackOfficePage: React.FC<{
             newCategories.add(menu1);
           }
         } else if (isOldFormat) {
-          // Old format with headers: Category, Name, Price
+          // Old format with headers: Category, Subcategory, Name/Item, Price
           const category = String(row[categoryIdx] || '').trim();
+          const subcategory = subcategoryIdx !== -1 ? String(row[subcategoryIdx] || '').trim() : '';
           const name = String(row[nameIdx] || '').trim();
-          const priceCol = row[priceIdx !== -1 ? priceIdx : 2];
+          const priceCol = row[priceIdx !== -1 ? priceIdx : 3];
           const price = typeof priceCol === 'number' ? priceCol : parseFloat(String(priceCol || '').replace(/[^0-9.]/g, ''));
 
           if (category && name && !isNaN(price)) {
             newServices.push({
               category,
+              subcategory: subcategory || null,
               name,
               price_numeric: price,
               price_display: `£${price.toFixed(2)}`,
@@ -3777,21 +3887,23 @@ const BackOfficePage: React.FC<{
             newCategories.add(category);
           }
         } else if (row.length >= 4) {
-          // Assume Menu1, Menu2, Title, Price format by position
-          const menu1 = String(row[0] || '').trim();
+          // Assume Category, Subcategory, Item, Price format by position
+          const category = String(row[0] || '').trim();
+          const subcategory = String(row[1] || '').trim();
           const title = String(row[2] || '').trim();
           const priceVal = row[3];
           const price = typeof priceVal === 'number' ? priceVal : parseFloat(String(priceVal || '').replace(/[^0-9.]/g, ''));
 
-          if (menu1 && title && !isNaN(price)) {
+          if (category && title && !isNaN(price)) {
             newServices.push({
-              category: menu1,
+              category,
+              subcategory: subcategory || null,
               name: title,
               price_numeric: price,
               price_display: `£${price.toFixed(2)}`,
               tenant_id: tenant.id
             });
-            newCategories.add(menu1);
+            newCategories.add(category);
           }
         } else if (row.length >= 3) {
           // Old format: Category, Name, Price by position
@@ -3830,7 +3942,7 @@ const BackOfficePage: React.FC<{
           alert('Import failed: ' + error.message);
         }
       } else {
-        alert('No valid rows found. Supported formats:\n- Menu1, Menu2, Title, Pricelevel1\n- Category, Name, Price');
+        alert('No valid rows found. Supported formats:\n- Category, Subcategory, Item, Price\n- Menu1, Menu2, Title, Pricelevel1\n- Category, Name, Price');
       }
     };
 
@@ -3903,11 +4015,11 @@ const BackOfficePage: React.FC<{
             <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-trust-blue/20 rounded-xl flex items-center justify-between">
               <div>
                 <p className="text-xs font-bold text-trust-blue uppercase mb-1">Your Store URL</p>
-                <p className="font-mono font-bold text-gray-900 dark:text-white">{tenant.subdomain}.cleanpos.app</p>
+                <p className="font-mono font-bold text-gray-900 dark:text-white">xp-clean.web.app/?tenant={tenant.subdomain}</p>
               </div>
-              <button onClick={() => window.open(`https://${tenant.subdomain}.cleanpos.app`, '_blank')} className="text-trust-blue hover:underline text-sm font-bold flex items-center gap-1">Visit Store <ExternalLink size={14} /></button>
+              <button onClick={() => window.open(`https://xp-clean.web.app/?tenant=${tenant.subdomain}`, '_blank')} className="text-trust-blue hover:underline text-sm font-bold flex items-center gap-1">Visit Store <ExternalLink size={14} /></button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><label className="block text-sm font-bold text-gray-700 mb-1">Store Name</label><input type="text" className="w-full border rounded p-2" value={settings.store_name || ''} onChange={e => setSettings({ ...settings, store_name: e.target.value })} /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">VAT Number</label><input type="text" className="w-full border rounded p-2" value={settings.store_vat || ''} onChange={e => setSettings({ ...settings, store_vat: e.target.value })} /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">Email Address (Order Copies)</label><input type="email" className="w-full border rounded p-2" value={settings.store_email || ''} onChange={e => setSettings({ ...settings, store_email: e.target.value })} /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">Phone Number</label><input type="text" className="w-full border rounded p-2" value={settings.store_phone || ''} onChange={e => setSettings({ ...settings, store_phone: e.target.value })} /></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><label className="block text-sm font-bold text-gray-700 mb-1">Store Name</label><input type="text" placeholder="Enter store name" autoComplete="off" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-trust-blue focus:border-trust-blue" value={settings.store_name || ''} onChange={e => setSettings(prev => ({ ...prev, store_name: e.target.value }))} /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">VAT Number</label><input type="text" placeholder="e.g. GB123456789" autoComplete="off" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-trust-blue focus:border-trust-blue" value={settings.store_vat || ''} onChange={e => setSettings(prev => ({ ...prev, store_vat: e.target.value }))} /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">Email Address (Order Copies)</label><input type="email" placeholder="you@example.com" autoComplete="off" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-trust-blue focus:border-trust-blue" value={settings.store_email || ''} onChange={e => setSettings(prev => ({ ...prev, store_email: e.target.value }))} /></div><div><label className="block text-sm font-bold text-gray-700 mb-1">Phone Number</label><input type="text" placeholder="e.g. 07123 456789" autoComplete="off" className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-trust-blue focus:border-trust-blue" value={settings.store_phone || ''} onChange={e => setSettings(prev => ({ ...prev, store_phone: e.target.value }))} /></div>
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 md:col-span-2">
                 <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm uppercase"><Layers size={16} className="text-trust-blue" /> Branding & Theme</h4>
                 <div className="grid grid-cols-2 gap-6">
@@ -3927,6 +4039,110 @@ const BackOfficePage: React.FC<{
                   </div>
                 </div>
               </div>
+              {/* Hero Background Image Upload */}
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 md:col-span-2">
+                <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm uppercase"><ImageIcon size={16} className="text-trust-blue" /> Hero Background Image</h4>
+                <p className="text-xs text-gray-500 mb-3">This image appears as the background on your customer-facing homepage. Recommended: 1920x800px, landscape.</p>
+                <div className="flex items-start gap-4">
+                  {settings.hero_image ? (
+                    <div className="relative w-48 h-24 rounded-lg overflow-hidden border-2 border-gray-200 shadow-sm flex-shrink-0">
+                      <img src={settings.hero_image} alt="Hero preview" className="w-full h-full object-cover" />
+                      <button
+                        onClick={() => setSettings(prev => ({ ...prev, hero_image: '' }))}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="w-48 h-24 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-400 flex-shrink-0">
+                      <ImageIcon size={24} />
+                    </div>
+                  )}
+                  <div className="flex-1">
+                    <label className="cursor-pointer inline-flex items-center gap-2 bg-trust-blue text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-trust-blue-hover transition active:scale-95">
+                      <Upload size={16} /> Upload Image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 5 * 1024 * 1024) { alert('Image must be under 5MB'); return; }
+                          const fileExt = file.name.split('.').pop();
+                          const fileName = `hero_${tenant.id}_${Date.now()}.${fileExt}`;
+                          const filePath = `hero-images/${fileName}`;
+                          const { error: uploadError } = await supabase.storage.from('store-assets').upload(filePath, file, { upsert: true });
+                          if (uploadError) {
+                            console.error('Upload error:', uploadError);
+                            alert('Upload failed: ' + uploadError.message);
+                            return;
+                          }
+                          const { data: { publicUrl } } = supabase.storage.from('store-assets').getPublicUrl(filePath);
+                          setSettings(prev => ({ ...prev, hero_image: publicUrl }));
+                        }}
+                      />
+                    </label>
+                    <p className="text-xs text-gray-400 mt-2">JPG, PNG or WebP. Max 5MB.</p>
+                    {settings.hero_image && <p className="text-xs text-green-600 font-bold mt-1 flex items-center gap-1"><CheckCircle size={12} /> Image uploaded — click Save Changes to apply</p>}
+                  </div>
+                </div>
+                {/* Image Position & Overlay Controls */}
+                {settings.hero_image && (
+                  <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Image Focus Position</label>
+                      <select
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-trust-blue"
+                        value={settings.hero_position || 'center center'}
+                        onChange={e => setSettings(prev => ({ ...prev, hero_position: e.target.value }))}
+                      >
+                        <option value="center top">Top</option>
+                        <option value="center center">Centre</option>
+                        <option value="center bottom">Bottom</option>
+                        <option value="left center">Left</option>
+                        <option value="right center">Right</option>
+                        <option value="left top">Top Left</option>
+                        <option value="right top">Top Right</option>
+                        <option value="left bottom">Bottom Left</option>
+                        <option value="right bottom">Bottom Right</option>
+                      </select>
+                      <p className="text-xs text-gray-400 mt-1">Choose which part of the image stays visible</p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Overlay Darkness: {settings.hero_overlay || 70}%</label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="90"
+                        step="5"
+                        className="w-full accent-trust-blue"
+                        value={settings.hero_overlay || 70}
+                        onChange={e => setSettings(prev => ({ ...prev, hero_overlay: e.target.value }))}
+                      />
+                      <div className="flex justify-between text-xs text-gray-400 mt-1">
+                        <span>Light (image visible)</span>
+                        <span>Dark (text readable)</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Live Preview */}
+                {settings.hero_image && (
+                  <div className="mt-4">
+                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Preview</label>
+                    <div className="relative rounded-xl overflow-hidden h-64">
+                      <div className="absolute inset-0 bg-cover" style={{ backgroundImage: `url('${settings.hero_image}')`, backgroundPosition: settings.hero_position || 'center center' }} />
+                      <div className="absolute inset-0" style={{ backgroundColor: `rgba(0,0,0,${settings.hero_overlay ? (parseInt(settings.hero_overlay) / 100) : 0.7})` }} />
+                      <div className="relative flex items-center justify-center h-full">
+                        <h3 className="text-white text-2xl font-bold drop-shadow-lg">Welcome to {tenant.name}</h3>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="md:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Store Address</label><textarea rows={3} className="w-full border rounded p-2" value={settings.store_address || ''} onChange={e => setSettings({ ...settings, store_address: e.target.value })} /></div><div className="md:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Invoice Footer Text</label><textarea rows={2} className="w-full border rounded p-2" value={settings.invoice_footer || ''} onChange={e => setSettings({ ...settings, invoice_footer: e.target.value })} /></div></div>
           </div>
 
@@ -4000,9 +4216,9 @@ const BackOfficePage: React.FC<{
                     try {
                       const printers = await (window as any).electronPrint.getPrinters();
                       setPrinterSettings((prev: any) => ({ ...prev, availablePrinters: printers }));
-                      alert('Found ' + printers.length + ' printers:\n' + printers.map((p: any) => p.name).join('\n'));
+                      showPrintToast('success', 'Found ' + printers.length + ' printer(s)');
                     } catch (e: any) {
-                      alert('Error getting printers: ' + e.message);
+                      showPrintToast('error', 'Error detecting printers: ' + e.message);
                     }
                   }}
                   className="text-xs bg-pink-100 text-pink-700 px-3 py-1 rounded-full font-bold hover:bg-pink-200"
@@ -4059,7 +4275,7 @@ const BackOfficePage: React.FC<{
                         setPrinterSettings((prev: any) => ({ ...prev, printerName: name }));
                         if (name && (window as any).electronPrint) {
                           await (window as any).electronPrint.setPrinter(name);
-                          alert('Printer set to: ' + name);
+                          showPrintToast('success', 'Printer set to: ' + name);
                         }
                       }}
                     >
@@ -4084,9 +4300,9 @@ const BackOfficePage: React.FC<{
                             qrData: 'TEST-PRINT'
                           });
                           if (result.success) {
-                            alert('Test tag sent to printer!');
+                            showPrintToast('success', 'Test tag sent to printer!');
                           } else {
-                            alert('Print failed: ' + (result.error || 'Unknown error'));
+                            showPrintToast('error', 'Print failed: ' + (result.error || 'Unknown error'));
                           }
                         }
                       }}
@@ -4125,10 +4341,10 @@ const BackOfficePage: React.FC<{
                       const result = await (window as any).electronPrint.getWindowsPrinters();
                       if (result.success && result.printers) {
                         setThermalPrinters(result.printers);
-                        alert('Found ' + result.printers.length + ' printers');
+                        showPrintToast('success', 'Found ' + result.printers.length + ' thermal printer(s)');
                       }
                     } catch (e: any) {
-                      alert('Error: ' + e.message);
+                      showPrintToast('error', 'Error: ' + e.message);
                     }
                   }}
                   className="text-xs bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-bold hover:bg-amber-200"
@@ -4161,14 +4377,14 @@ const BackOfficePage: React.FC<{
                       onClick={async () => {
                         const printer = thermalPrinterAssignments.receiptPrinter;
                         if (!printer) {
-                          alert('Please select a receipt printer first');
+                          showPrintToast('warning', 'Please select a receipt printer first');
                           return;
                         }
                         const result = await (window as any).electronPrint.testThermalPrinter(printer);
                         if (result.success) {
-                          alert('Test print sent successfully!');
+                          showPrintToast('success', 'Test print sent to receipt printer!');
                         } else {
-                          alert('Test print failed: ' + (result.error || 'Unknown error'));
+                          showPrintToast('error', 'Test print failed: ' + (result.error || 'Unknown error'));
                         }
                       }}
                       className="bg-amber-600 text-white px-3 py-1 rounded font-bold text-sm hover:bg-amber-700"
@@ -4179,9 +4395,9 @@ const BackOfficePage: React.FC<{
                       onClick={async () => {
                         const result = await (window as any).electronPrint.openCashDrawer();
                         if (result.success) {
-                          alert('Cash drawer opened!');
+                          showPrintToast('success', 'Cash drawer opened!');
                         } else {
-                          alert('Failed: ' + (result.error || 'No printer assigned'));
+                          showPrintToast('error', 'Failed: ' + (result.error || 'No printer assigned'));
                         }
                       }}
                       className="bg-green-600 text-white px-3 py-1 rounded font-bold text-sm hover:bg-green-700"
@@ -4204,10 +4420,10 @@ const BackOfficePage: React.FC<{
                           const result = await (window as any).electronPrint.getWindowsPrinters();
                           if (result.success && result.printers) {
                             setThermalPrinters(result.printers);
-                            alert('Found ' + result.printers.length + ' printers');
+                            showPrintToast('success', 'Found ' + result.printers.length + ' printer(s)');
                           }
                         } catch (e: any) {
-                          alert('Error: ' + e.message);
+                          showPrintToast('error', 'Error: ' + e.message);
                         }
                       }}
                       className="text-xs bg-purple-100 text-purple-700 px-3 py-1 rounded-full font-bold hover:bg-purple-200"
@@ -4235,14 +4451,14 @@ const BackOfficePage: React.FC<{
                       onClick={async () => {
                         const printer = thermalPrinterAssignments.dstubsPrinter;
                         if (!printer) {
-                          alert('Please select a DStubs printer first');
+                          showPrintToast('warning', 'Please select a DStubs printer first');
                           return;
                         }
                         const result = await (window as any).electronPrint.testThermalPrinter(printer);
                         if (result.success) {
-                          alert('Test print sent to DStubs printer!');
+                          showPrintToast('success', 'Test print sent to DStubs printer!');
                         } else {
-                          alert('Test print failed: ' + (result.error || 'Unknown error'));
+                          showPrintToast('error', 'Test print failed: ' + (result.error || 'Unknown error'));
                         }
                       }}
                       className="bg-purple-600 text-white px-3 py-1 rounded font-bold text-sm hover:bg-purple-700"
@@ -4818,10 +5034,16 @@ const BackOfficePage: React.FC<{
                         }} title="Print Bag Tags" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-pink-400 hover:bg-pink-50"><ShoppingBag size={14} /><span className="text-[8px] font-bold mt-0.5">Bag Tags</span></button>
 
                         {/* Garment Tags */}
-                        <button onClick={() => printDStubs(order)} title="Print DStubs (1 per item) - Bixolon" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">DStubs</span></button>
+                        <button onClick={() => printDStubs(order, '76mm')} title="Print DStubs 76mm (standard)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">DStub 76</span></button>
+
+                        {/* DStubs 40mm */}
+                        <button onClick={() => printDStubs(order, '40mm')} title="Print DStubs 40mm (narrow)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-violet-400 hover:bg-violet-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">DStub 40</span></button>
 
                         {/* Print Receipt (Thermal) */}
                         <button onClick={() => printOrderReceipts(order)} title="Print Receipt (Thermal)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-amber-400 hover:bg-amber-50"><Printer size={14} /><span className="text-[8px] font-bold mt-0.5">Receipt</span></button>
+
+                        {/* Print All (Receipt + Shop Copy + DStubs) */}
+                        <button onClick={() => printAll(order)} title="Print All (Receipt + Shop Copy + DStubs)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-trust-blue text-white border-trust-blue hover:bg-blue-700"><Layers size={14} /><span className="text-[8px] font-bold mt-0.5">Print All</span></button>
                       </div>
                     </td>
                   </tr>
@@ -5537,6 +5759,15 @@ const BackOfficePage: React.FC<{
                 </datalist>
               </div>
               <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Subcategory (Menu2)</label>
+                <input
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800"
+                  placeholder="e.g. Coats"
+                  value={newService.subcategory}
+                  onChange={e => setNewService({ ...newService, subcategory: e.target.value })}
+                />
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Service Name</label>
                 <input
                   className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800"
@@ -5570,13 +5801,14 @@ const BackOfficePage: React.FC<{
             <div className="max-h-[500px] overflow-y-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-gray-500 sticky top-0">
-                  <tr><th className="px-4 py-3">Category</th><th className="px-4 py-3">Service Name</th><th className="px-4 py-3 text-right">Price</th><th className="px-4 py-3 text-right">Actions</th></tr>
+                  <tr><th className="px-4 py-3">Category</th><th className="px-4 py-3">Subcategory</th><th className="px-4 py-3">Service Name</th><th className="px-4 py-3 text-right">Price</th><th className="px-4 py-3 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {services.length === 0 && (<tr><td colSpan={4} className="p-6 text-center text-gray-500">No services found.</td></tr>)}
+                  {services.length === 0 && (<tr><td colSpan={5} className="p-6 text-center text-gray-500">No services found.</td></tr>)}
                   {services.map(svc => (
                     <tr key={svc.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-4 py-3 font-medium text-gray-500">{svc.category}</td>
+                      <td className="px-4 py-3 font-medium text-gray-400">{svc.subcategory || '—'}</td>
                       <td className="px-4 py-3 text-gray-900 dark:text-gray-100">
                         {editingService?.id === svc.id ? (
                           <input
@@ -7115,7 +7347,7 @@ const BackOfficePage: React.FC<{
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
                   <Globe className="text-green-600" size={24} /> Customer-Facing Website
                 </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Your customers access your branded website at <span className="font-mono font-bold">{tenant?.subdomain || 'yourstore'}.cleanpos.app</span></p>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Your customers access your branded website at <span className="font-mono font-bold">xp-clean.web.app/?tenant={tenant?.subdomain || 'yourstore'}</span></p>
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm">
                     <h4 className="font-bold text-sm mb-1 flex items-center gap-2"><Calendar size={16} className="text-green-600" /> Book Collection</h4>
@@ -9576,11 +9808,12 @@ const BookingPage: React.FC<{
               const filteredServices = serviceSearch.trim()
                 ? services.filter(svc =>
                     svc.name.toLowerCase().includes(serviceSearch.toLowerCase()) ||
-                    (svc.category && svc.category.toLowerCase().includes(serviceSearch.toLowerCase()))
+                    (svc.category && svc.category.toLowerCase().includes(serviceSearch.toLowerCase())) ||
+                    (svc.subcategory && svc.subcategory.toLowerCase().includes(serviceSearch.toLowerCase()))
                   )
                 : services;
 
-              // Group items by category only (no subcategory)
+              // Group items by category then subcategory
               const servicesByCategory: Record<string, ServiceProduct[]> = {};
               filteredServices.forEach(svc => {
                 const cat = svc.category || 'Uncategorized';
@@ -9615,6 +9848,16 @@ const BookingPage: React.FC<{
                 const isCatExpanded = serviceSearch.trim() ? true : expandedCats.includes(catName);
                 if (catServices.length === 0) return null;
 
+                // Group by subcategory within this category
+                const subcatGroups: Record<string, ServiceProduct[]> = {};
+                catServices.forEach(svc => {
+                  const sub = svc.subcategory || '';
+                  if (!subcatGroups[sub]) subcatGroups[sub] = [];
+                  subcatGroups[sub].push(svc);
+                });
+                const subcatNames = Object.keys(subcatGroups).sort((a, b) => a.localeCompare(b));
+                const hasSubcategories = subcatNames.length > 1 || (subcatNames.length === 1 && subcatNames[0] !== '');
+
                 return (
                   <div key={catName} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-4">
                     <button
@@ -9629,8 +9872,18 @@ const BookingPage: React.FC<{
                       {isCatExpanded ? <ChevronUp size={20} className="text-trust-blue" /> : <ChevronDown size={20} className="text-gray-400" />}
                     </button>
                     {isCatExpanded && (
-                      <div className="divide-y divide-gray-100 animate-fade-in">
-                        {catServices.map(svc => {
+                      <div className="animate-fade-in">
+                        {subcatNames.map(subName => {
+                          const subServices = subcatGroups[subName];
+                          return (
+                            <div key={subName || '_none'}>
+                              {hasSubcategories && subName && (
+                                <div className="px-6 py-2 bg-gray-50/70 border-t border-gray-100">
+                                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{subName}</span>
+                                </div>
+                              )}
+                              <div className="divide-y divide-gray-100">
+                                {subServices.map(svc => {
                           const cartItem = cart.find(i => i.name === svc.name);
                           const qtyInCart = cartItem ? cartItem.quantity : 0;
 
@@ -9667,6 +9920,10 @@ const BookingPage: React.FC<{
                                   <Plus size={20} strokeWidth={3} />
                                 </button>
                               )}
+                            </div>
+                          );
+                        })}
+                              </div>
                             </div>
                           );
                         })}
@@ -10092,7 +10349,7 @@ const HowItWorksPage: React.FC<{ tenant: any; setPage: (p: Page) => void }> = ({
   </div>
 );
 
-const HomePage: React.FC<{ tenant: any; setPage: (p: Page) => void }> = ({ tenant, setPage }) => {
+const HomePage: React.FC<{ tenant: any; setPage: (p: Page) => void; settings?: any }> = ({ tenant, setPage, settings }) => {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -10111,10 +10368,11 @@ const HomePage: React.FC<{ tenant: any; setPage: (p: Page) => void }> = ({ tenan
 
   return (
     <div className="animate-fade-in">
-      <div className="relative bg-gray-900 text-white pt-40 pb-32 px-4 text-center">
-        <div className="absolute inset-0 opacity-30 bg-[url('/hero.png')] bg-cover bg-center" />
+      <div className="relative bg-gray-900 text-white pt-48 pb-44 px-4 text-center">
+        <div className="absolute inset-0 bg-cover" style={{ backgroundImage: `url('${settings?.hero_image || '/hero.png'}')`, backgroundPosition: settings?.hero_position || 'center center' }} />
+        <div className="absolute inset-0" style={{ backgroundColor: `rgba(0,0,0,${settings?.hero_overlay ? (parseInt(settings.hero_overlay) / 100) : 0.7})` }} />
         <div className="relative max-w-4xl mx-auto text-center space-y-6">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 font-heading">Welcome to {tenant.name}</h1>
+          <h1 className="text-4xl md:text-6xl font-bold mb-4 font-heading drop-shadow-lg">Welcome to {tenant.name}</h1>
           <p className="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Professional care for your clothes. Eco-friendly, reliable, and delivered to your door in Winchester and surrounding areas.</p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <button onClick={() => setPage('booking')} className="bg-trust-blue hover:bg-trust-blue-hover text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 group">Book Your Collection <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" /></button>
@@ -10227,7 +10485,7 @@ const ServicesPage: React.FC<{ tenant: any }> = ({ tenant }) => {
       ) : (
         <div className="space-y-8">
           {(() => {
-            // Group by category only (no subcategory)
+            // Group by category then subcategory
             const servicesByCategory: Record<string, any[]> = {};
             services.forEach(svc => {
               const cat = svc.category || 'Uncategorized';
@@ -10247,6 +10505,16 @@ const ServicesPage: React.FC<{ tenant: any }> = ({ tenant }) => {
               const catServices = servicesByCategory[catName];
               if (!catServices || catServices.length === 0) return null;
 
+              // Group by subcategory
+              const subcatGroups: Record<string, any[]> = {};
+              catServices.forEach((svc: any) => {
+                const sub = svc.subcategory || '';
+                if (!subcatGroups[sub]) subcatGroups[sub] = [];
+                subcatGroups[sub].push(svc);
+              });
+              const subcatNames = Object.keys(subcatGroups).sort((a, b) => a.localeCompare(b));
+              const hasSubcategories = subcatNames.length > 1 || (subcatNames.length === 1 && subcatNames[0] !== '');
+
               return (
                 <div key={catName} className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
                   <div className="bg-trust-blue/10 dark:bg-trust-blue/20 px-6 py-4 border-b border-gray-100 dark:border-gray-800">
@@ -10256,11 +10524,20 @@ const ServicesPage: React.FC<{ tenant: any }> = ({ tenant }) => {
                       <span className="text-sm font-normal text-gray-500 ml-2">({catServices.length} items)</span>
                     </h3>
                   </div>
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-                    {catServices.map(s => (
-                      <div key={s.id} className="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-800/50 rounded-lg px-4 py-3">
-                        <span className="text-gray-700 dark:text-gray-300 font-medium">{s.name}</span>
-                        <span className="font-bold text-trust-blue">£{parseFloat(String(s.price_numeric || 0)).toFixed(2)}</span>
+                  <div className="p-4">
+                    {subcatNames.map(subName => (
+                      <div key={subName || '_none'}>
+                        {hasSubcategories && subName && (
+                          <h4 className="text-sm font-bold text-gray-500 uppercase tracking-wider mt-4 mb-2 first:mt-0">{subName}</h4>
+                        )}
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {subcatGroups[subName].map((s: any) => (
+                            <div key={s.id} className="flex justify-between items-center text-sm bg-gray-50 dark:bg-gray-800/50 rounded-lg px-4 py-3">
+                              <span className="text-gray-700 dark:text-gray-300 font-medium">{s.name}</span>
+                              <span className="font-bold text-trust-blue">£{parseFloat(String(s.price_numeric || 0)).toFixed(2)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -12173,7 +12450,7 @@ const PartnerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
                   value={subdomain}
                   onChange={e => { setSubdomain(e.target.value); setError(''); }}
                 />
-                <span className="text-gray-400 font-bold">.cleanpos.app</span>
+                <span className="text-gray-400 font-bold">.web.app</span>
               </div>
             </div>
 
@@ -12561,8 +12838,8 @@ const MasterAdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
                             <div className="text-[10px] text-gray-500 font-mono">{tenant.id}</div>
                           </td>
                           <td className="px-6 py-4">
-                            <a href={`https://${tenant.subdomain}.cleanpos.app`} target="_blank" className="text-trust-blue hover:underline font-medium text-sm">
-                              {tenant.subdomain}.cleanpos.app
+                            <a href={`https://xp-clean.web.app/?tenant=${tenant.subdomain}`} target="_blank" className="text-trust-blue hover:underline font-medium text-sm">
+                              xp-clean.web.app/?tenant={tenant.subdomain}
                             </a>
                           </td>
                           <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
@@ -12754,7 +13031,7 @@ const MasterAdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
                     onChange={e => setEditingTenant({ ...editingTenant, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
                     className="flex-1 bg-transparent border-none font-bold outline-none"
                   />
-                  <span className="text-gray-400 font-medium">.cleanpos.app</span>
+                  <span className="text-gray-400 font-medium">.web.app</span>
                 </div>
               </div>
               <div>
@@ -12880,7 +13157,7 @@ const SaaSSignupModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignup
         toEmail: formData.email,
         toName: formData.businessName,
         subject: `Welcome to CleanPOS! Your Hub for ${formData.businessName}`,
-        textContent: `Hi ${formData.businessName},\n\nWelcome to the CleanPOS family! We're thrilled to help you grow your dry cleaning business.\n\nYour account has been successfully created and your 15-day free trial is now active.\n\nSTORE DETAILS:\n- Business Name: ${formData.businessName}\n- Your Domain: https://${formData.subdomain}.cleanpos.app\n- Back Office: https://${formData.subdomain}.cleanpos.app/back-office\n\nADMIN CREDENTIALS:\n- Login Email: ${formData.email}\n- Password: [The password you chose during signup]\n\nGETTING STARDED:\n1. Log in to your Back Office.\n2. Go to 'Store Settings' to customize your colors and details.\n3. Add your first service category and starts taking orders!\n\nIf you need any help, just reply to this email.\n\nKeep it clean!\nThe CleanPOS Team`
+        textContent: `Hi ${formData.businessName},\n\nWelcome to the CleanPOS family! We're thrilled to help you grow your dry cleaning business.\n\nYour account has been successfully created and your 15-day free trial is now active.\n\nSTORE DETAILS:\n- Business Name: ${formData.businessName}\n- Your Domain: https://xp-clean.web.app/?tenant=${formData.subdomain}\n- Back Office: https://xp-clean.web.app/?tenant=${formData.subdomain}\n\nADMIN CREDENTIALS:\n- Login Email: ${formData.email}\n- Password: [The password you chose during signup]\n\nGETTING STARDED:\n1. Log in to your Back Office.\n2. Go to 'Store Settings' to customize your colors and details.\n3. Add your first service category and starts taking orders!\n\nIf you need any help, just reply to this email.\n\nKeep it clean!\nThe CleanPOS Team`
       });
 
       setSignupResult({ tenant, admin: staffAdmin });
@@ -12931,7 +13208,7 @@ const SaaSSignupModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignup
                     value={formData.subdomain}
                     onChange={e => setFormData({ ...formData, subdomain: e.target.value.replace(/[^a-z0-9-]/g, '') })}
                   />
-                  <span className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-bold rounded-r-xl">.cleanpos.app</span>
+                  <span className="px-4 py-3 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-bold rounded-r-xl">.web.app</span>
                 </div>
               </div>
               <div>
@@ -13010,7 +13287,7 @@ const SaaSSignupModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignup
                 Your store <strong>{formData.businessName}</strong> has been created at:
               </p>
               <div className="p-4 bg-blue-50 dark:bg-blue-900/30 rounded-2xl border-2 border-dashed border-trust-blue">
-                <p className="font-mono text-trust-blue font-bold text-lg">{formData.subdomain}.cleanpos.app</p>
+                <p className="font-mono text-trust-blue font-bold text-lg">xp-clean.web.app/?tenant={formData.subdomain}</p>
               </div>
               <p className="text-sm text-gray-500 pt-4">We've sent a welcome email with your admin login details. You can log in now to start setting up your services.</p>
             </div>
@@ -13064,7 +13341,7 @@ const App: React.FC = () => {
       if (forceTenant) {
         subdomain = forceTenant;
       } else if (parts.length >= 3 && parts[0] !== 'www') {
-        // Handle standard subdomains (e.g., class1.cleanpos.app or class1.netlify.app)
+        // Handle standard subdomains (e.g., class1.xp-clean.web.app)
         subdomain = parts[0];
       } else if (parts.length >= 2 && parts[parts.length - 1] === 'localhost') {
         // Handle localhost (e.g., class1.localhost)
@@ -13268,7 +13545,7 @@ const App: React.FC = () => {
 
             {tenant && (
               <>
-                {currentPage === 'home' && <HomePage tenant={tenant} setPage={setPage} />}
+                {currentPage === 'home' && <HomePage tenant={tenant} setPage={setPage} settings={appSettings} />}
                 {currentPage === 'how-it-works' && <HowItWorksPage tenant={tenant} setPage={setPage} />}
                 {currentPage === 'services' && <ServicesPage tenant={tenant} />}
                 {currentPage === 'contact' && <ContactPage settings={appSettings} />}
@@ -13340,7 +13617,7 @@ const App: React.FC = () => {
               Authorize Access
             </button>
             <button
-              onClick={() => { setMasterAuthOpen(false); window.location.href = 'https://cleanpos.app'; }}
+              onClick={() => { setMasterAuthOpen(false); window.location.href = 'https://xp-clean.web.app'; }}
               className="mt-4 text-gray-500 hover:text-gray-700 text-sm font-bold"
             >
               Cancel
