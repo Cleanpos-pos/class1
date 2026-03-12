@@ -363,6 +363,7 @@ function generateLabelHtml(tagData) {
     ticketNumber = '---',
     customerName = 'Walk-in',
     customerPhone = '',
+    customerAddress = '',
     storeName = '',
     storeAddress = '',
     itemCount = 0,
@@ -507,6 +508,7 @@ function generateLabelHtml(tagData) {
     <div class="customer-section">
       <div class="customer-name">${customerName}</div>
       ${customerPhone ? `<div class="customer-phone">Tel: ${customerPhone}</div>` : ''}
+      ${customerAddress ? `<div class="customer-phone">${customerAddress}</div>` : ''}
     </div>
 
     ${itemsList ? `

@@ -1453,6 +1453,9 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
     name: user.name || '',
     phone: user.phone || '',
     address: user.address || '',
+    address2: user.address2 || '',
+    city: user.city || '',
+    postcode: user.postcode || '',
     notes: user.notes || '',
     starch: user.starch_level || 'None',
     finish: user.finish_style || 'On Hanger',
@@ -1550,6 +1553,9 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
       name: profile.name,
       phone: profile.phone,
       address: profile.address,
+      address2: profile.address2,
+      city: profile.city,
+      postcode: profile.postcode,
       notes: profile.notes,
       starch_level: profile.starch,
       finish_style: profile.finish,
@@ -1651,8 +1657,14 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
             <div className="space-y-4">
               <div><label className="block text-xs font-bold text-gray-700 mb-1">Full Name</label><input type="text" value={profile.name} onChange={e => setProfile({ ...profile, name: e.target.value })} className="w-full border rounded p-2 text-sm" /></div>
               <div><label className="block text-xs font-bold text-gray-700 mb-1">Phone</label><input type="text" value={profile.phone} onChange={e => setProfile({ ...profile, phone: e.target.value })} className="w-full border rounded p-2 text-sm" /></div>
-              <div><label className="block text-xs font-bold text-gray-700 mb-1">Default Address</label><textarea rows={3} value={profile.address} onChange={e => setProfile({ ...profile, address: e.target.value })} className="w-full border rounded p-2 text-sm" /></div>
-              <div><label className="block text-xs font-bold text-gray-700 mb-1">Delivery Notes</label><textarea rows={2} value={profile.notes} onChange={e => setProfile({ ...profile, notes: e.target.value })} className="w-full border rounded p-2 text-sm" placeholder="e.g. Gate code 1234" /></div>
+              <h4 className="text-sm font-bold text-gray-900 pt-2 flex items-center gap-1"><MapPin size={14} /> Address</h4>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">House Number / Name & Street</label><input type="text" value={profile.address} onChange={e => setProfile({ ...profile, address: e.target.value })} className="w-full border rounded p-2 text-sm" placeholder="e.g. 71 Narrow Lane" /></div>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">Address Line 2</label><input type="text" value={profile.address2} onChange={e => setProfile({ ...profile, address2: e.target.value })} className="w-full border rounded p-2 text-sm" placeholder="e.g. Unit 8, Leatherline Business Centre" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-xs font-bold text-gray-700 mb-1">Town / City</label><input type="text" value={profile.city} onChange={e => setProfile({ ...profile, city: e.target.value })} className="w-full border rounded p-2 text-sm" placeholder="e.g. Leicester" /></div>
+                <div><label className="block text-xs font-bold text-gray-700 mb-1">Postcode</label><input type="text" value={profile.postcode} onChange={e => setProfile({ ...profile, postcode: e.target.value.toUpperCase() })} className="w-full border rounded p-2 text-sm" placeholder="e.g. LE1 9EA" /></div>
+              </div>
+              <div><label className="block text-xs font-bold text-gray-700 mb-1">Delivery Notes</label><textarea rows={2} value={profile.notes} onChange={e => setProfile({ ...profile, notes: e.target.value })} className="w-full border rounded p-2 text-sm" placeholder="e.g. Gate code 1234, near back door" /></div>
             </div>
           </div>
 

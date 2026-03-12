@@ -51,6 +51,7 @@ export const printOrderTag = async (order) => {
     ticketNumber: order.pos_ticket_id || order.id?.slice(-6)?.toUpperCase() || '---',
     customerName: order.customer_name || 'Walk-in',
     customerPhone: order.customer_phone || '',
+    customerAddress: order.customer_address || '',
     itemCount: order.items?.length || 0,
     items: order.items?.map(i => i.name || i.service_name).join(', ') || '',
     dueDate: order.due_date ? formatDate(order.due_date) : 'TBD',
