@@ -8719,6 +8719,7 @@ const BookingPage: React.FC<{
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [services, setServices] = useState<ServiceProduct[]>([]);
   const [expandedCats, setExpandedCats] = useState<string[]>([]);
+  const [expandedSubcats, setExpandedSubcats] = useState<string[]>([]);
   const [pointsBalance, setPointsBalance] = useState(0);
   const [redeemPoints, setRedeemPoints] = useState(false);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -9129,6 +9130,7 @@ const BookingPage: React.FC<{
   const updateNote = (itemName: string, note: string) => setCart(cart.map(i => i.name === itemName ? { ...i, note } : i));
   const removeFromCart = (itemName: string) => setCart(cart.filter(i => i.name !== itemName));
   const toggleCat = (catName: string) => setExpandedCats(expandedCats.includes(catName) ? expandedCats.filter(c => c !== catName) : [...expandedCats, catName]);
+  const toggleSubcat = (key: string) => setExpandedSubcats(expandedSubcats.includes(key) ? expandedSubcats.filter(k => k !== key) : [...expandedSubcats, key]);
   const checkLoyalty = async () => { if (!customer.email || !tenant) return; const { data } = await supabase.from('cp_customers').select('loyalty_points').eq('email', customer.email).eq('tenant_id', tenant.id).single(); if (data) setPointsBalance(data.loyalty_points); else setPointsBalance(0); };
 
   const applyDiscountCode = async () => {
@@ -9875,13 +9877,23 @@ const BookingPage: React.FC<{
                       <div className="animate-fade-in">
                         {subcatNames.map(subName => {
                           const subServices = subcatGroups[subName];
+                          const subcatKey = `${catName}::${subName}`;
+                          const isSubExpanded = serviceSearch.trim() ? true : !hasSubcategories || !subName || expandedSubcats.includes(subcatKey);
                           return (
                             <div key={subName || '_none'}>
                               {hasSubcategories && subName && (
-                                <div className="px-6 py-2 bg-gray-50/70 border-t border-gray-100">
-                                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{subName}</span>
-                                </div>
+                                <button
+                                  onClick={() => toggleSubcat(subcatKey)}
+                                  className={`w-full flex justify-between items-center px-6 py-3 border-t border-gray-100 transition-colors ${isSubExpanded ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                                >
+                                  <span className="text-sm font-bold uppercase tracking-wider">{subName}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isSubExpanded ? 'bg-white/20 text-white' : 'bg-blue-200 text-blue-600'}`}>{subServices.length}</span>
+                                    {isSubExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                  </div>
+                                </button>
                               )}
+                              {isSubExpanded && (
                               <div className="divide-y divide-gray-100">
                                 {subServices.map(svc => {
                           const cartItem = cart.find(i => i.name === svc.name);
@@ -9924,6 +9936,7 @@ const BookingPage: React.FC<{
                           );
                         })}
                               </div>
+                              )}
                             </div>
                           );
                         })}
