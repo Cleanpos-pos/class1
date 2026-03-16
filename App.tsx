@@ -8751,6 +8751,8 @@ const BookingPage: React.FC<{
   const [discountCodeInput, setDiscountCodeInput] = useState('');
   const [appliedDiscountCode, setAppliedDiscountCode] = useState<DiscountCode | null>(null);
   const [codeError, setCodeError] = useState('');
+  const [showOrderSuccess, setShowOrderSuccess] = useState(false);
+  const [successOrderId, setSuccessOrderId] = useState('');
   const [showMultiOfferWarning, setShowMultiOfferWarning] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
   const [recentItems, setRecentItems] = useState<{name: string; price: string; count: number}[]>([]);
@@ -9439,8 +9441,8 @@ const BookingPage: React.FC<{
 
       setCart([]);
       logger.debug('Order Flow Complete.');
-      alert("Order submitted successfully! Confirmation emails have been sent to your account and the store.");
-      setPage('customer-portal');
+      setSuccessOrderId(readableId);
+      setShowOrderSuccess(true);
 
     } catch (err: any) {
       logger.error('CRITICAL ERROR IN SUBMIT ORDER:', err);
@@ -9453,6 +9455,91 @@ const BookingPage: React.FC<{
   if (dataLoading) { return <div className="pt-32 pb-20 text-center flex justify-center"><Loader2 className="animate-spin text-trust-blue" size={48} /></div>; }
 
   const isCancel = new URLSearchParams(window.location.search).get('payment') === 'cancel';
+
+  // Order Success Modal with animated van
+  if (showOrderSuccess) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+        <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+          {/* Sky and road scene */}
+          <div className="relative h-48 bg-gradient-to-b from-blue-400 via-blue-300 to-blue-200 overflow-hidden">
+            {/* Clouds */}
+            <div className="absolute top-4 animate-[slideRight_8s_linear_infinite]" style={{left: '-20%'}}>
+              <div className="bg-white/80 rounded-full w-20 h-8 relative">
+                <div className="absolute -top-3 left-4 bg-white/80 rounded-full w-12 h-8"></div>
+                <div className="absolute -top-1 left-1 bg-white/80 rounded-full w-8 h-6"></div>
+              </div>
+            </div>
+            <div className="absolute top-12 animate-[slideRight_12s_linear_infinite]" style={{left: '-30%', animationDelay: '3s'}}>
+              <div className="bg-white/60 rounded-full w-16 h-6 relative">
+                <div className="absolute -top-2 left-3 bg-white/60 rounded-full w-10 h-6"></div>
+              </div>
+            </div>
+            {/* Sun */}
+            <div className="absolute top-6 right-8 w-12 h-12 bg-yellow-300 rounded-full shadow-lg shadow-yellow-200/50 animate-pulse"></div>
+            {/* Hills */}
+            <div className="absolute bottom-12 left-0 right-0">
+              <svg viewBox="0 0 400 60" className="w-full"><path d="M0,60 Q50,10 100,40 Q150,5 200,35 Q250,10 300,45 Q350,15 400,30 L400,60 Z" fill="#4ade80" opacity="0.6"/><path d="M0,60 Q80,25 160,45 Q240,20 320,50 Q360,30 400,40 L400,60 Z" fill="#22c55e" opacity="0.8"/></svg>
+            </div>
+            {/* Road */}
+            <div className="absolute bottom-0 left-0 right-0 h-12 bg-gray-700">
+              <div className="absolute top-5 left-0 right-0 flex gap-4 animate-[slideLeft_1s_linear_infinite]">
+                {[...Array(20)].map((_, i) => <div key={i} className="w-8 h-1 bg-yellow-400 flex-shrink-0"></div>)}
+              </div>
+            </div>
+            {/* Van - driving animation */}
+            <div className="absolute bottom-3 animate-[vanBounce_0.5s_ease-in-out_infinite] left-1/2 -translate-x-1/2">
+              <div className="relative">
+                {/* Van body */}
+                <div className="bg-trust-blue rounded-t-lg rounded-r-lg w-24 h-14 relative shadow-lg">
+                  {/* Cargo area */}
+                  <div className="absolute top-1 left-1 right-8 bottom-1 bg-blue-600 rounded-sm"></div>
+                  {/* Cabin */}
+                  <div className="absolute top-2 right-0 w-10 h-10 bg-blue-400 rounded-tr-lg">
+                    <div className="absolute top-1 right-1 w-7 h-5 bg-sky-200 rounded-tr-md rounded-sm opacity-80"></div>
+                  </div>
+                  {/* Logo on van */}
+                  <div className="absolute top-3 left-2 text-white text-[6px] font-bold leading-tight">CLEAN<br/>POS</div>
+                </div>
+                {/* Wheels */}
+                <div className="absolute -bottom-2 left-3 w-5 h-5 bg-gray-800 rounded-full border-2 border-gray-400 animate-[spin_0.5s_linear_infinite]">
+                  <div className="absolute inset-1 border border-gray-500 rounded-full"></div>
+                </div>
+                <div className="absolute -bottom-2 right-3 w-5 h-5 bg-gray-800 rounded-full border-2 border-gray-400 animate-[spin_0.5s_linear_infinite]">
+                  <div className="absolute inset-1 border border-gray-500 rounded-full"></div>
+                </div>
+                {/* Exhaust */}
+                <div className="absolute bottom-0 -left-3 flex gap-1">
+                  <div className="w-2 h-2 bg-gray-400/40 rounded-full animate-ping"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* Content */}
+          <div className="p-8 text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full mb-4 animate-bounce">
+              <CheckCircle2 size={36} className="text-green-500" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Confirmed!</h2>
+            <p className="text-gray-500 text-sm mb-1">Order #{successOrderId}</p>
+            <p className="text-lg text-gray-700 font-medium mb-2">We'll see you soon! 🚐</p>
+            <p className="text-sm text-gray-500 mb-6">Confirmation emails have been sent to your account and the store.</p>
+            <button
+              onClick={() => { setShowOrderSuccess(false); setPage('customer-portal'); }}
+              className="w-full bg-trust-blue text-white py-3 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all transform hover:scale-[1.02] active:scale-95 shadow-lg shadow-blue-200"
+            >
+              View My Orders
+            </button>
+          </div>
+        </div>
+        <style>{`
+          @keyframes slideRight { 0% { transform: translateX(0); } 100% { transform: translateX(500px); } }
+          @keyframes slideLeft { 0% { transform: translateX(0); } 100% { transform: translateX(-48px); } }
+          @keyframes vanBounce { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(-2px); } }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="pt-28 pb-20 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 animate-fade-in">
