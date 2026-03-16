@@ -513,6 +513,7 @@ function generateLabelHtml(tagData) {
       <div class="customer-name">${customerName}</div>
       ${customerPhone ? `<div class="customer-phone">Tel: ${customerPhone}</div>` : ''}
       ${customerAddress ? `<div class="customer-address">${customerAddress}</div>` : ''}
+      ${notes ? `<div style="font-size: 9pt; font-weight: bold; font-style: italic; margin-top: 1mm;">Notes: ${notes}</div>` : ''}
     </div>
 
     ${itemsList ? `
@@ -525,8 +526,6 @@ function generateLabelHtml(tagData) {
     ${dueDate && dueDate !== 'TBD' ? `
     <div class="due-section">Ready by: ${dueDate}</div>
     ` : ''}
-
-    ${notes ? `<div style="font-size: 8pt; font-style: italic; margin-bottom: 2mm;">Note: ${notes}</div>` : ''}
 
     <div class="barcode-section">
       <img src="https://barcodeapi.org/api/128/${encodeURIComponent(barcodeContent)}" alt="Barcode" />

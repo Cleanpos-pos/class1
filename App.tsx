@@ -9315,6 +9315,7 @@ const BookingPage: React.FC<{
         recurring_frequency: recurring,
         marketing_opt_in: marketingOptIn,
         preferences: userPreferences,
+        notes: customer.notes || null,
         tenant_id: tenant.id
       };
 
