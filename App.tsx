@@ -9302,7 +9302,7 @@ const BookingPage: React.FC<{
         customer_email: customer.email,
         customer_phone: customer.phone,
         customer_address: getFullAddress(),
-        collection_slot_id: (!selectedSlot || selectedSlot === 'anytime' || (postcodeResult?.collectionSlots?.length > 0)) ? null : selectedSlot,
+        collection_slot_id: (!selectedSlot || selectedSlot === 'anytime' || !availableSlots.some(s => s.id === selectedSlot)) ? null : selectedSlot,
         collection_slot_label: slotLabel,
         delivery_slot: deliverySlotLabel,
         status: 'pending',
