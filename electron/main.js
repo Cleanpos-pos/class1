@@ -453,6 +453,10 @@ function generateLabelHtml(tagData) {
     .customer-phone {
       font-size: 10pt;
     }
+    .customer-address {
+      font-size: 10pt;
+      font-weight: bold;
+    }
     .items-section {
       border-bottom: 1px dashed #000;
       padding-bottom: 2mm;
@@ -508,7 +512,7 @@ function generateLabelHtml(tagData) {
     <div class="customer-section">
       <div class="customer-name">${customerName}</div>
       ${customerPhone ? `<div class="customer-phone">Tel: ${customerPhone}</div>` : ''}
-      ${customerAddress ? `<div class="customer-phone">${customerAddress}</div>` : ''}
+      ${customerAddress ? `<div class="customer-address">${customerAddress}</div>` : ''}
     </div>
 
     ${itemsList ? `
