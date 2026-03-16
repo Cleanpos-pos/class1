@@ -3155,7 +3155,7 @@ const BackOfficePage: React.FC<{
               customer_name: customer.name,
               customer_email: customer.email,
               customer_phone: customer.phone,
-              customer_address: customer.address,
+              customer_address: [customer.address, customer.address2, customer.city, customer.postcode].filter(Boolean).join(', '),
               items: lastOrder.items || [],
               total_amount: lastOrder.total_amount || 0,
               status: 'pending',
