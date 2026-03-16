@@ -8821,17 +8821,14 @@ const BookingPage: React.FC<{
         if (mounted && promos) setPromotions(promos.filter(p => p.active));
 
         if (currentUser) {
-          // Parse existing address if stored as comma-separated
-          const storedAddress = currentUser.address || '';
-          const addressParts = storedAddress.split(',').map((p: string) => p.trim());
           setCustomer({
             name: currentUser.name || '',
             email: currentUser.email || '',
             phone: currentUser.phone || '',
-            address: addressParts[0] || '',
-            address2: addressParts[1] || '',
-            city: addressParts[2] || '',
-            postcode: addressParts[3] || '',
+            address: currentUser.address || '',
+            address2: currentUser.address2 || '',
+            city: currentUser.city || '',
+            postcode: currentUser.postcode || '',
             notes: currentUser.notes || ''
           });
           if (currentUser.loyalty_points) setPointsBalance(currentUser.loyalty_points);
