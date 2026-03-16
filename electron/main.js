@@ -746,6 +746,7 @@ function setupIpcHandlers() {
   // Print a tag/label
   ipcMain.handle('print-tag', async (event, tagData) => {
     try {
+      console.log('[BTag] tagData received:', JSON.stringify({ customerName: tagData.customerName, customerPhone: tagData.customerPhone, customerAddress: tagData.customerAddress }, null, 2));
       if (!BROTHER_QL800_CONFIG.printerName) {
         const printers = await mainWindow.webContents.getPrintersAsync();
         const brotherPrinter = printers.find(p => p.name.toLowerCase().includes('brother'));
@@ -757,6 +758,10 @@ function setupIpcHandlers() {
       }
 
       const labelHtml = generateLabelHtml(tagData);
+      // Debug: save a copy for inspection
+      const debugFile = path.join(os.tmpdir(), 'btag-debug-latest.html');
+      fs.writeFileSync(debugFile, labelHtml, 'utf8');
+      console.log('[BTag] Debug HTML saved to:', debugFile);
       const tempFile = path.join(os.tmpdir(), `label-${Date.now()}.html`);
       fs.writeFileSync(tempFile, labelHtml, 'utf8');
 
