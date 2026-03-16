@@ -8930,14 +8930,13 @@ const BookingPage: React.FC<{
 
     // Calculate distance if we have settings
     let distance: { miles: number; text: string } | undefined;
-    const { data: settingsData } = await supabase.from('cp_company_settings').select('google_maps_api_key, store_postcode').eq('tenant_id', tenant.id).single();
 
-    if (settingsData?.google_maps_api_key && settingsData?.store_postcode && (window as any).electronPrint?.calculateDistance) {
+    if (companySettings?.google_maps_api_key && companySettings?.store_postcode && (window as any).electronPrint?.calculateDistance) {
       try {
         const result = await (window as any).electronPrint.calculateDistance({
-          origin: settingsData.store_postcode,
+          origin: companySettings.store_postcode,
           destination: postcode,
-          apiKey: settingsData.google_maps_api_key
+          apiKey: companySettings.google_maps_api_key
         });
         if (result.status === 'OK' && result.rows?.[0]?.elements?.[0]?.status === 'OK') {
           const element = result.rows[0].elements[0];
