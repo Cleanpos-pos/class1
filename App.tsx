@@ -4526,32 +4526,6 @@ const BackOfficePage: React.FC<{
                       />
                       <span className="font-medium text-gray-800">Auto-print Customer Receipt on order completion</span>
                     </label>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={thermalPrinterAssignments.autoPrintShopCopy || false}
-                        onChange={async (e) => {
-                          const newAssignments = { ...thermalPrinterAssignments, autoPrintShopCopy: e.target.checked };
-                          setThermalPrinterAssignments(newAssignments);
-                          await (window as any).electronPrint.setPrinterAssignments(newAssignments);
-                        }}
-                        className="w-5 h-5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
-                      />
-                      <span className="font-medium text-gray-800">Auto-print Shop Copy on order completion</span>
-                    </label>
-                    <label className="flex items-center gap-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={thermalPrinterAssignments.autoPrintDstubs || false}
-                        onChange={async (e) => {
-                          const newAssignments = { ...thermalPrinterAssignments, autoPrintDstubs: e.target.checked };
-                          setThermalPrinterAssignments(newAssignments);
-                          await (window as any).electronPrint.setPrinterAssignments(newAssignments);
-                        }}
-                        className="w-5 h-5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                      />
-                      <span className="font-medium text-gray-800">Auto-print DStubs on order completion</span>
-                    </label>
                   </div>
                 </div>
 
