@@ -1536,6 +1536,42 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
     };
   }, [user.email]);
 
+  // === SHIPDAY: Poll and sync statuses from customer side too ===
+  useEffect(() => {
+    const shipdayStatusMap: Record<string, string> = {
+      'ASSIGNED': 'dispatched', 'ACCEPTED': 'collecting', 'STARTED': 'collecting',
+      'PICKED_UP': 'collected', 'READY_FOR_PICKUP': 'ready_for_delivery',
+      'OUT_FOR_DELIVERY': 'out_for_delivery', 'DELIVERED': 'delivered',
+    };
+    const stages = ['pending', 'dispatched', 'collecting', 'collected', 'cleaning', 'ready_for_delivery', 'out_for_delivery', 'delivered', 'completed'];
+    const syncShipday = async () => {
+      try {
+        const { data: sdSettings } = await supabase.from('cp_app_settings').select('key, value').eq('tenant_id', tenantId).in('key', ['shipday_enabled', 'shipday_api_key']);
+        const cfg: any = {};
+        sdSettings?.forEach((s: any) => { cfg[s.key] = s.value; });
+        if (cfg.shipday_enabled !== 'true' || !cfg.shipday_api_key) return;
+        const activeOrders = await ShipdayService.getActiveOrders(cfg.shipday_api_key);
+        if (!activeOrders.length) return;
+        for (const sdOrder of activeOrders) {
+          const sdStatus = sdOrder.orderStatus?.orderState;
+          if (!sdStatus || !shipdayStatusMap[sdStatus]) continue;
+          const newStatus = shipdayStatusMap[sdStatus];
+          const orderNum = sdOrder.orderNumber?.replace(/-COL$|-DEL$/, '');
+          if (!orderNum) continue;
+          const matched = orders.find(o => o.readable_id === orderNum);
+          if (matched && stages.indexOf(newStatus) > stages.indexOf(matched.status)) {
+            await supabase.from('cp_orders').update({ status: newStatus }).eq('id', matched.id);
+          }
+        }
+      } catch (err) { /* silent */ }
+    };
+    if (orders.some(o => !['completed', 'delivered'].includes(o.status))) {
+      syncShipday();
+      const interval = setInterval(syncShipday, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [orders.length, tenantId]);
+
   const handleRefresh = async () => {
     setRefreshing(true);
     const { data: orderData } = await supabase
