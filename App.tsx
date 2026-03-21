@@ -3564,7 +3564,32 @@ const BackOfficePage: React.FC<{
     else if (data) { setAvailableSlots([...availableSlots, data[0] as TimeSlot]); setSlotTimesObj({ ...slotTimesObj, [day]: '' }); }
   };
   const deleteSlot = async (id: string) => { await supabase.from('cp_time_slots').delete().eq('id', id).eq('tenant_id', tenant.id); setAvailableSlots(availableSlots.filter(s => s.id !== id)); };
-  const updateOrderStatus = async (orderId: string, status: string) => { await supabase.from('cp_orders').update({ status }).eq('id', orderId); fetchOrders(); };
+  const updateOrderStatus = async (orderId: string, status: string) => {
+    await supabase.from('cp_orders').update({ status }).eq('id', orderId);
+    // === SHIPDAY: Create DELIVERY job when order is ready (factory → customer) ===
+    if (status === 'ready_for_delivery' && settings.shipday_enabled === 'true' && settings.shipday_api_key) {
+      const order = orders.find(o => o.id === orderId);
+      if (order && order.customer_address) {
+        const storeAddr = settings.shipday_store_address || settings.store_address || '';
+        const storeName = settings.shipday_store_name || settings.store_name || '';
+        ShipdayService.createOrder(settings.shipday_api_key, {
+          orderNumber: `${order.readable_id}-DEL`,
+          customerName: order.customer_name,
+          customerAddress: order.customer_address,
+          customerPhoneNumber: order.customer_phone || '',
+          restaurantName: storeName,
+          restaurantAddress: storeAddr,
+          deliveryInstruction: `DELIVERY to ${order.customer_name}. ${order.notes || ''}`
+        }).then(result => {
+          if (result?.orderId) {
+            supabase.from('cp_orders').update({ shipday_delivery_id: result.orderId }).eq('id', orderId);
+            logger.debug('[Shipday] Delivery job created:', result.orderId);
+          }
+        }).catch(err => logger.warn('[Shipday] Delivery job failed:', err));
+      }
+    }
+    fetchOrders();
+  };
 
   const openCollectionFailedModal = (orderId: string) => {
     setCollectionFailedOrderId(orderId);
@@ -3604,9 +3629,13 @@ const BackOfficePage: React.FC<{
     if (driverId.startsWith('shipday_')) {
       const carrierId = parseInt(driverId.replace('shipday_', ''));
       const order = orders.find(o => o.id === orderId);
-      if (order?.shipday_order_id && settings.shipday_api_key) {
-        const ok = await ShipdayService.assignDriver(settings.shipday_api_key, order.shipday_order_id, carrierId);
-        if (!ok) alert('Failed to assign Shipday driver. Please try again.');
+      if (settings.shipday_api_key) {
+        // Assign to whichever Shipday job exists (collection or delivery)
+        const shipdayId = order?.shipday_collection_id || order?.shipday_delivery_id;
+        if (shipdayId) {
+          const ok = await ShipdayService.assignDriver(settings.shipday_api_key, shipdayId, carrierId);
+          if (!ok) alert('Failed to assign Shipday driver. Please try again.');
+        }
       }
       await supabase.from('cp_orders').update({ driver_id: null, collection_driver_id: null, delivery_driver_id: null }).eq('id', orderId);
     } else {
@@ -9412,28 +9441,31 @@ const BookingPage: React.FC<{
         await supabase.from('cp_invoices').insert([invoiceData]);
       }
 
-      // === SHIPDAY: Fire-and-forget delivery order creation ===
+      // === SHIPDAY: Create COLLECTION job (pickup FROM customer → deliver TO factory) ===
       try {
         const { data: shipdaySettings } = await supabase.from('cp_app_settings').select('key, value').eq('tenant_id', tenant.id).in('key', ['shipday_enabled', 'shipday_api_key', 'shipday_store_name', 'shipday_store_address', 'store_name', 'store_address']);
         const sdSettings: any = {};
         shipdaySettings?.forEach((s: any) => { sdSettings[s.key] = s.value; });
         if (sdSettings.shipday_enabled === 'true' && sdSettings.shipday_api_key) {
+          const storeAddr = sdSettings.shipday_store_address || sdSettings.store_address || '';
+          const storeName = sdSettings.shipday_store_name || sdSettings.store_name || '';
+          // COLLECTION: Pickup FROM customer address, deliver TO factory
           ShipdayService.createOrder(sdSettings.shipday_api_key, {
-            orderNumber: readableId,
-            customerName: customer.name,
-            customerAddress: getFullAddress(),
-            customerPhoneNumber: customer.phone,
-            restaurantName: sdSettings.shipday_store_name || sdSettings.store_name || '',
-            restaurantAddress: sdSettings.shipday_store_address || sdSettings.store_address || '',
+            orderNumber: `${readableId}-COL`,
+            customerName: storeName,
+            customerAddress: storeAddr,
+            customerPhoneNumber: '',
+            restaurantName: customer.name,
+            restaurantAddress: getFullAddress(),
             orderItem: cart.map(item => ({ name: item.name, unitPrice: parseFloat(item.price), quantity: item.quantity })),
             totalOrderCost: totals.finalTotal,
-            deliveryInstruction: customer.notes || ''
+            deliveryInstruction: `COLLECTION from ${customer.name}. ${customer.notes || ''}`
           }).then(result => {
             if (result?.orderId) {
-              supabase.from('cp_orders').update({ shipday_order_id: result.orderId }).eq('id', orderResult.id);
-              logger.debug('[Shipday] Order created:', result.orderId);
+              supabase.from('cp_orders').update({ shipday_collection_id: result.orderId }).eq('id', orderResult.id);
+              logger.debug('[Shipday] Collection job created:', result.orderId);
             }
-          }).catch(err => logger.warn('[Shipday] Order creation failed:', err));
+          }).catch(err => logger.warn('[Shipday] Collection job failed:', err));
         }
       } catch (sdErr) { logger.warn('[Shipday] Settings fetch failed:', sdErr); }
 
