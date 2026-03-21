@@ -8972,7 +8972,7 @@ const BookingPage: React.FC<{
           // Fetch recent orders to show "Order Again" items
           const { data: recentOrders } = await supabase
             .from('cp_orders')
-            .select('items')
+            .select('*, items:cp_order_items(*)')
             .eq('tenant_id', tenant.id)
             .eq('customer_email', currentUser.email)
             .order('created_at', { ascending: false })
@@ -8983,7 +8983,7 @@ const BookingPage: React.FC<{
             const itemCounts: Record<string, {name: string; price: string; count: number}> = {};
             recentOrders.forEach(order => {
               try {
-                const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+                const items = Array.isArray(order.items) ? order.items : [];
                 if (Array.isArray(items)) {
                   items.forEach((item: any) => {
                     if (item.name && !item.name.includes('Valet Bag')) {
@@ -9516,7 +9516,8 @@ const BookingPage: React.FC<{
           tenant_id: tenant.id
         };
         logger.debug('Saving invoice to DB:', invoiceData);
-        await supabase.from('cp_invoices').insert([invoiceData]);
+        const { error: invError } = await supabase.from('cp_invoices').insert([invoiceData]);
+        if (invError) logger.warn('Invoice insert error (non-critical):', invError.message);
       }
 
       // === SHIPDAY: Create COLLECTION job (pickup FROM customer → deliver TO factory) ===
