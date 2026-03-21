@@ -9524,11 +9524,13 @@ const BookingPage: React.FC<{
         const { data: shipdaySettings } = await supabase.from('cp_app_settings').select('key, value').eq('tenant_id', tenant.id).in('key', ['shipday_enabled', 'shipday_api_key', 'shipday_store_name', 'shipday_store_address', 'store_name', 'store_address']);
         const sdSettings: any = {};
         shipdaySettings?.forEach((s: any) => { sdSettings[s.key] = s.value; });
+        console.log('[Shipday] Settings check:', sdSettings.shipday_enabled, '| API key exists:', !!sdSettings.shipday_api_key);
         if (sdSettings.shipday_enabled === 'true' && sdSettings.shipday_api_key) {
           const storeAddr = sdSettings.shipday_store_address || sdSettings.store_address || '';
           const storeName = sdSettings.shipday_store_name || sdSettings.store_name || '';
+          console.log('[Shipday] Creating collection job for', readableId, '| Store:', storeName, storeAddr);
           // COLLECTION: Pickup FROM customer address, deliver TO factory
-          ShipdayService.createOrder(sdSettings.shipday_api_key, {
+          const sdResult = await ShipdayService.createOrder(sdSettings.shipday_api_key, {
             orderNumber: `${readableId}-COL`,
             customerName: storeName,
             customerAddress: storeAddr,
@@ -9538,14 +9540,14 @@ const BookingPage: React.FC<{
             orderItem: cart.map(item => ({ name: item.name, unitPrice: parseFloat(item.price), quantity: item.quantity })),
             totalOrderCost: totals.finalTotal,
             deliveryInstruction: `COLLECTION from ${customer.name}. ${customer.notes || ''}`
-          }).then(result => {
-            if (result?.orderId) {
-              supabase.from('cp_orders').update({ shipday_collection_id: result.orderId }).eq('id', orderResult.id);
-              logger.debug('[Shipday] Collection job created:', result.orderId);
-            }
-          }).catch(err => logger.warn('[Shipday] Collection job failed:', err));
+          });
+          console.log('[Shipday] createOrder result:', sdResult);
+          if (sdResult?.orderId) {
+            await supabase.from('cp_orders').update({ shipday_collection_id: sdResult.orderId }).eq('id', orderResult.id);
+            console.log('[Shipday] Collection job linked to order:', sdResult.orderId);
+          }
         }
-      } catch (sdErr) { logger.warn('[Shipday] Settings fetch failed:', sdErr); }
+      } catch (sdErr) { console.error('[Shipday] COLLECTION ERROR:', sdErr); }
 
       // --- Stripe Payment / Subscription Integration ---
       // Only require Stripe payment if tenant uses per-transaction billing
