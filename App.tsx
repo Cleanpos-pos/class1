@@ -9555,6 +9555,8 @@ const BookingPage: React.FC<{
       }
 
       logger.debug('Triggering email confirmation...');
+      const baseUrl = window.location.origin;
+      const trackingUrl = `${baseUrl}/?tenant=${tenant.subdomain}#track-${readableId}`;
       await sendOrderConfirmation({
         name: customer.name,
         email: customer.email,
@@ -9563,7 +9565,8 @@ const BookingPage: React.FC<{
         storeEmail: storeEmail,
         storeName: tenant.name,
         totalOverride: totals.finalTotal.toFixed(2),
-        slotLabel: slotLabel
+        slotLabel: slotLabel,
+        trackingUrl: trackingUrl
       });
 
       setCart([]);
