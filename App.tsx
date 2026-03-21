@@ -2844,6 +2844,48 @@ const BackOfficePage: React.FC<{
     };
   }, [settings]);
 
+  // === SHIPDAY: Poll active orders every 45s and sync status to database ===
+  useEffect(() => {
+    if (settings.shipday_enabled !== 'true' || !settings.shipday_api_key) return;
+    const shipdayStatusMap: Record<string, string> = {
+      'ASSIGNED': 'dispatched',
+      'ACCEPTED': 'collecting',
+      'STARTED': 'collecting',
+      'PICKED_UP': 'collected',
+      'READY_FOR_PICKUP': 'ready_for_delivery',
+      'OUT_FOR_DELIVERY': 'out_for_delivery',
+      'DELIVERED': 'delivered',
+    };
+    const syncShipdayStatuses = async () => {
+      try {
+        const activeOrders = await ShipdayService.getActiveOrders(settings.shipday_api_key);
+        if (!activeOrders.length) return;
+        for (const sdOrder of activeOrders) {
+          const sdStatus = sdOrder.orderStatus?.orderState;
+          if (!sdStatus || !shipdayStatusMap[sdStatus]) continue;
+          const newStatus = shipdayStatusMap[sdStatus];
+          const orderNum = sdOrder.orderNumber?.replace(/-COL$|-DEL$/, '');
+          if (!orderNum) continue;
+          const matchedOrder = orders.find(o => o.readable_id === orderNum);
+          if (matchedOrder && matchedOrder.status !== newStatus) {
+            // Only update if Shipday status is further along
+            const stages = ['pending', 'dispatched', 'collecting', 'collected', 'cleaning', 'ready_for_delivery', 'out_for_delivery', 'delivered', 'completed'];
+            const currentIdx = stages.indexOf(matchedOrder.status);
+            const newIdx = stages.indexOf(newStatus);
+            if (newIdx > currentIdx) {
+              await supabase.from('cp_orders').update({ status: newStatus }).eq('id', matchedOrder.id);
+              logger.debug(`[Shipday] Synced ${orderNum}: ${matchedOrder.status} → ${newStatus}`);
+            }
+          }
+        }
+        fetchOrders();
+      } catch (err) { logger.warn('[Shipday] Polling error:', err); }
+    };
+    syncShipdayStatuses(); // Run immediately
+    const interval = setInterval(syncShipdayStatuses, 45000); // Then every 45s
+    return () => clearInterval(interval);
+  }, [settings.shipday_enabled, settings.shipday_api_key, orders.length]);
+
   const fetchEmailTemplates = async () => { const { data } = await supabase.from('cp_email_templates').select('*').eq('tenant_id', tenant.id); if (data && data.length > 0) { setEmailTemplates(data); if (!selectedTemplateId) setSelectedTemplateId(data[0].id); } };
   const fetchPromotions = async () => { const { data } = await supabase.from('cp_promotions').select('*').eq('tenant_id', tenant.id); if (data) setPromotions(data); };
   const fetchCustomers = async () => { const { data } = await supabase.from('cp_customers').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }); if (data) setCustomers(data); };
