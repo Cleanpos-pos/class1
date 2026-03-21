@@ -9,6 +9,7 @@ import { Page, TimeSlot, CartItem, DeliveryOption, DiscountCode } from './types'
 import { PostcodeArea, PostcodeServiceSlot } from './types/postcode';
 import { supabase } from './supabaseClient';
 import { sendOrderConfirmation, sendBrevoEmail, sendCustomerSignupNotification, sendCustomerWelcomeEmail } from './services/emailService';
+import { ShipdayService } from './services/ShipdayService';
 import DeliveryMap from './components/DeliveryMap';
 import { hashPassword, verifyPassword } from './utils/passwordUtils';
 import logger from './utils/logger';
@@ -1914,6 +1915,7 @@ const BackOfficePage: React.FC<{
   const [orders, setOrders] = useState<any[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [drivers, setDrivers] = useState<any[]>([]);
+  const [shipdayCarriers, setShipdayCarriers] = useState<any[]>([]);
   const [driverForm, setDriverForm] = useState({ name: '', email: '', phone: '', vehicle_reg: '', password_hash: '', working_days: [] as string[] });
   const [editingOrder, setEditingOrder] = useState<any>(null);
   const [isEditOrderOpen, setIsEditOrderOpen] = useState(false);
@@ -2878,7 +2880,14 @@ const BackOfficePage: React.FC<{
       setFetchError(null);
     }
   };
-  const fetchDrivers = async () => { const { data } = await supabase.from('cp_drivers').select('*').eq('tenant_id', tenant.id); if (data) setDrivers(data); };
+  const fetchDrivers = async () => {
+    const { data } = await supabase.from('cp_drivers').select('*').eq('tenant_id', tenant.id);
+    if (data) setDrivers(data);
+    // === SHIPDAY: Fetch Shipday carriers if enabled ===
+    if (settings.shipday_enabled === 'true' && settings.shipday_api_key) {
+      ShipdayService.getCarriers(settings.shipday_api_key).then(carriers => setShipdayCarriers(carriers));
+    }
+  };
   const fetchDiscountCodes = async () => { const { data } = await supabase.from('cp_discount_codes').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }); if (data) setDiscountCodes(data); };
 
   // Postcode Areas CRUD
@@ -3591,11 +3600,22 @@ const BackOfficePage: React.FC<{
   };
 
   const updateOrderDriver = async (orderId: string, driverId: string) => {
-    await supabase.from('cp_orders').update({
-      driver_id: driverId,
-      collection_driver_id: driverId,
-      delivery_driver_id: driverId
-    }).eq('id', orderId);
+    // === SHIPDAY: Check if this is a Shipday carrier (prefixed with 'shipday_') ===
+    if (driverId.startsWith('shipday_')) {
+      const carrierId = parseInt(driverId.replace('shipday_', ''));
+      const order = orders.find(o => o.id === orderId);
+      if (order?.shipday_order_id && settings.shipday_api_key) {
+        const ok = await ShipdayService.assignDriver(settings.shipday_api_key, order.shipday_order_id, carrierId);
+        if (!ok) alert('Failed to assign Shipday driver. Please try again.');
+      }
+      await supabase.from('cp_orders').update({ driver_id: null, collection_driver_id: null, delivery_driver_id: null }).eq('id', orderId);
+    } else {
+      await supabase.from('cp_orders').update({
+        driver_id: driverId,
+        collection_driver_id: driverId,
+        delivery_driver_id: driverId
+      }).eq('id', orderId);
+    }
     fetchOrders();
   };
   const togglePromoItem = (formType: 'bogo' | 'bundle', itemName: string) => { if (formType === 'bogo') { const items = bogoForm.included_items || []; if (items.includes(itemName)) { setBogoForm({ ...bogoForm, included_items: items.filter((i: string) => i !== itemName) }); } else { setBogoForm({ ...bogoForm, included_items: [...items, itemName] }); } } else { const items = bundleForm.included_items || []; if (items.includes(itemName)) { setBundleForm({ ...bundleForm, included_items: items.filter((i: string) => i !== itemName) }); } else { setBundleForm({ ...bundleForm, included_items: [...items, itemName] }); } } };
@@ -4493,6 +4513,39 @@ const BackOfficePage: React.FC<{
                   </div>
                 </div>
 
+                {/* === SHIPDAY INTEGRATION START === */}
+                <div className="border-t pt-6">
+                  <h4 className="font-bold text-sm text-gray-700 mb-3 flex items-center gap-2"><Truck size={16} className="text-trust-blue" /> Shipday — Delivery Driver Dispatch</h4>
+                  <div className="space-y-4">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input type="checkbox" checked={settings.shipday_enabled === 'true'} onChange={(e) => { const val = e.target.checked ? 'true' : 'false'; setSettings((prev: any) => ({ ...prev, shipday_enabled: val })); handleSaveSettings({ ...settings, shipday_enabled: val }); }} className="w-5 h-5 rounded text-trust-blue" />
+                      <span className="font-medium text-gray-800">Enable Shipday Integration</span>
+                    </label>
+                    {settings.shipday_enabled === 'true' && (
+                      <div className="space-y-3 pl-8">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">API Key</label>
+                          <div className="flex gap-2">
+                            <input type="password" value={settings.shipday_api_key || ''} onChange={(e) => setSettings((prev: any) => ({ ...prev, shipday_api_key: e.target.value }))} placeholder="Enter Shipday API key" className="flex-1 border rounded-lg px-3 py-2 text-sm" />
+                            <button onClick={async () => { const ok = await ShipdayService.testConnection(settings.shipday_api_key || ''); alert(ok ? 'Connection successful!' : 'Connection failed. Check your API key.'); }} className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-green-600 transition">Test</button>
+                            <button onClick={() => handleSaveSettings({ ...settings })} className="bg-trust-blue text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-trust-blue-hover transition">Save</button>
+                          </div>
+                          <p className="text-[10px] text-gray-400 mt-1">Get your API key from shipday.com → Settings → API</p>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Store Name (for Shipday pickup)</label>
+                          <input type="text" value={settings.shipday_store_name || settings.store_name || ''} onChange={(e) => setSettings((prev: any) => ({ ...prev, shipday_store_name: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 mb-1">Store Address (for Shipday pickup)</label>
+                          <input type="text" value={settings.shipday_store_address || settings.store_address || ''} onChange={(e) => setSettings((prev: any) => ({ ...prev, shipday_store_address: e.target.value }))} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* === SHIPDAY INTEGRATION END === */}
+
                 {/* Auto-Print Settings */}
                 <div className="border-t pt-6">
                   <h4 className="font-bold text-sm text-gray-700 mb-3">Auto-Print Settings</h4>
@@ -4992,7 +5045,7 @@ const BackOfficePage: React.FC<{
                                       order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                                         'bg-gray-100 text-gray-700'
                       }`}>{order.status.replace(/_/g, ' ')}</span></td>
-                    <td className="px-4 py-4"><select className="text-xs border border-gray-200 rounded p-1 bg-white focus:border-trust-blue outline-none" value={order.driver_id || ''} onChange={(e) => updateOrderDriver(order.id, e.target.value)}><option value="">-- Assign --</option>{drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}</select></td>
+                    <td className="px-4 py-4"><select className="text-xs border border-gray-200 rounded p-1 bg-white focus:border-trust-blue outline-none" value={order.driver_id || ''} onChange={(e) => updateOrderDriver(order.id, e.target.value)}><option value="">-- Assign --</option>{drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}{shipdayCarriers.length > 0 && <option disabled>── Shipday Drivers ──</option>}{shipdayCarriers.map(c => (<option key={`shipday_${c.id}`} value={`shipday_${c.id}`}>{c.name} {c.isOnShift ? '🟢' : '⚫'}</option>))}</select></td>
                     <td className="px-4 py-4">
                       <div className="flex gap-1.5 flex-wrap max-w-2xl">
                         {/* Dispatch for Collection */}
@@ -9208,12 +9261,12 @@ const BookingPage: React.FC<{
     try {
       logger.debug('Fetching store settings...');
       let storeEmail = '';
-      const { data: settings, error: settingsError } = await supabase.from('cp_app_settings').select('value').eq('key', 'store_email').eq('tenant_id', tenant.id).single();
+      const { data: emailSetting, error: settingsError } = await supabase.from('cp_app_settings').select('value').eq('key', 'store_email').eq('tenant_id', tenant.id).single();
 
       if (settingsError && settingsError.code !== 'PGRST116') {
         logger.warn('Error fetching settings:', settingsError);
       }
-      if (settings) storeEmail = settings.value;
+      if (emailSetting) storeEmail = emailSetting.value;
 
       const readableId = Math.random().toString(36).substring(2, 6).toUpperCase();
       logger.debug('Generated Order ID:', readableId);
@@ -9358,6 +9411,31 @@ const BookingPage: React.FC<{
         logger.debug('Saving invoice to DB:', invoiceData);
         await supabase.from('cp_invoices').insert([invoiceData]);
       }
+
+      // === SHIPDAY: Fire-and-forget delivery order creation ===
+      try {
+        const { data: shipdaySettings } = await supabase.from('cp_app_settings').select('key, value').eq('tenant_id', tenant.id).in('key', ['shipday_enabled', 'shipday_api_key', 'shipday_store_name', 'shipday_store_address', 'store_name', 'store_address']);
+        const sdSettings: any = {};
+        shipdaySettings?.forEach((s: any) => { sdSettings[s.key] = s.value; });
+        if (sdSettings.shipday_enabled === 'true' && sdSettings.shipday_api_key) {
+          ShipdayService.createOrder(sdSettings.shipday_api_key, {
+            orderNumber: readableId,
+            customerName: customer.name,
+            customerAddress: getFullAddress(),
+            customerPhoneNumber: customer.phone,
+            restaurantName: sdSettings.shipday_store_name || sdSettings.store_name || '',
+            restaurantAddress: sdSettings.shipday_store_address || sdSettings.store_address || '',
+            orderItem: cart.map(item => ({ name: item.name, unitPrice: parseFloat(item.price), quantity: item.quantity })),
+            totalOrderCost: totals.finalTotal,
+            deliveryInstruction: customer.notes || ''
+          }).then(result => {
+            if (result?.orderId) {
+              supabase.from('cp_orders').update({ shipday_order_id: result.orderId }).eq('id', orderResult.id);
+              logger.debug('[Shipday] Order created:', result.orderId);
+            }
+          }).catch(err => logger.warn('[Shipday] Order creation failed:', err));
+        }
+      } catch (sdErr) { logger.warn('[Shipday] Settings fetch failed:', sdErr); }
 
       // --- Stripe Payment / Subscription Integration ---
       // Only require Stripe payment if tenant uses per-transaction billing
