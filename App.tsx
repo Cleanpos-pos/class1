@@ -6502,7 +6502,8 @@ const BackOfficePage: React.FC<{
                         <div className="flex flex-wrap gap-2 mb-3">
                           {daySlots.map(slot => (
                             <div key={slot.id} className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 border ${scheduleTab === 'collection' ? 'bg-blue-50 text-trust-blue border-blue-100' : 'bg-green-50 text-green-600 border-green-100'}`}>
-                              {slot.label} - {getNextDate(slot.day)}
+                              <span>{slot.label}</span>
+                              <span className="text-xs opacity-60">(every {slot.day})</span>
                               <button onClick={() => deleteSlot(slot.id)} className={`ml-2 ${scheduleTab === 'collection' ? 'text-blue-400 hover:text-red-500' : 'text-green-400 hover:text-red-500'}`}>
                                 <X size={14} />
                               </button>
@@ -11447,7 +11448,7 @@ const BookingPage: React.FC<{
                       )}
                     </div>
 
-                    {/* Collection Slots */}
+                    {/* Collection Slots (postcode-specific) */}
                     {postcodeResult.collectionSlots.length > 0 && (
                       <div>
                         <h4 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
@@ -11455,21 +11456,8 @@ const BookingPage: React.FC<{
                         </h4>
                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
                           {postcodeResult.collectionSlots.map((slot: any, idx: number) => (
-                            <label
-                              key={`col-${idx}`}
-                              className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${
-                                selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr
-                                  ? 'border-blue-500 bg-blue-50'
-                                  : 'border-gray-200 hover:border-blue-300'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name="postcode-slot"
-                                checked={selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr}
-                                onChange={() => setSelectedPostcodeSlot({ type: 'collection', slotId: slot.slot_id, date: slot.dateStr, label: slot.label })}
-                                className="w-4 h-4 text-blue-600"
-                              />
+                            <label key={`col-${idx}`} className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}>
+                              <input type="radio" name="postcode-slot" checked={selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr} onChange={() => setSelectedPostcodeSlot({ type: 'collection', slotId: slot.slot_id, date: slot.dateStr, label: slot.label })} className="w-4 h-4 text-blue-600" />
                               <span className="text-sm">{slot.label}</span>
                               <span className="text-xs text-gray-400 ml-auto">({slot.slots_remaining} left)</span>
                             </label>
@@ -11478,7 +11466,7 @@ const BookingPage: React.FC<{
                       </div>
                     )}
 
-                    {/* Delivery Slots */}
+                    {/* Delivery Slots (postcode-specific) */}
                     {postcodeResult.deliverySlots.length > 0 && (
                       <div>
                         <h4 className="font-bold text-gray-700 mb-2 flex items-center gap-2">
@@ -11486,21 +11474,8 @@ const BookingPage: React.FC<{
                         </h4>
                         <div className="grid grid-cols-1 gap-2 max-h-40 overflow-y-auto">
                           {postcodeResult.deliverySlots.map((slot: any, idx: number) => (
-                            <label
-                              key={`del-${idx}`}
-                              className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${
-                                selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr
-                                  ? 'border-green-500 bg-green-50'
-                                  : 'border-gray-200 hover:border-green-300'
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name="postcode-slot"
-                                checked={selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr}
-                                onChange={() => setSelectedPostcodeSlot({ type: 'delivery', slotId: slot.slot_id, date: slot.dateStr, label: slot.label })}
-                                className="w-4 h-4 text-green-600"
-                              />
+                            <label key={`del-${idx}`} className={`flex items-center gap-3 p-3 border rounded-lg cursor-pointer transition ${selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr ? 'border-green-500 bg-green-50' : 'border-gray-200 hover:border-green-300'}`}>
+                              <input type="radio" name="postcode-slot" checked={selectedPostcodeSlot?.slotId === slot.slot_id && selectedPostcodeSlot?.date === slot.dateStr} onChange={() => setSelectedPostcodeSlot({ type: 'delivery', slotId: slot.slot_id, date: slot.dateStr, label: slot.label })} className="w-4 h-4 text-green-600" />
                               <span className="text-sm">{slot.label}</span>
                               <span className="text-xs text-gray-400 ml-auto">({slot.slots_remaining} left)</span>
                             </label>
@@ -11509,10 +11484,11 @@ const BookingPage: React.FC<{
                       </div>
                     )}
 
+                    {/* Fallback message when no postcode slots configured */}
                     {postcodeResult.collectionSlots.length === 0 && postcodeResult.deliverySlots.length === 0 && (
-                      <div className="text-center py-4 text-gray-500">
-                        <p>No slots configured for this area yet.</p>
-                        <p className="text-sm">Please contact the store to arrange collection.</p>
+                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 text-center">
+                        <p className="text-sm text-blue-800 font-semibold">&#10003; Great news — we service your area!</p>
+                        <p className="text-xs text-blue-600 mt-1">Choose your collection &amp; delivery days on the next steps.</p>
                       </div>
                     )}
                   </>
@@ -12141,8 +12117,21 @@ const BookingPage: React.FC<{
           <h2 className="font-bold text-2xl mb-6">Select Collection Day</h2>
           <p className="text-gray-600 mb-6">When would you like us to collect your items?</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            {/* Always use default Schedule slots — postcode areas are only for service validation & surcharges */}
-            {availableSlots.filter(s => s.type === 'collection' || !s.type).length > 0 ? (
+            {postcodeResult?.collectionSlots && postcodeResult.collectionSlots.length > 0 ? (
+              postcodeResult.collectionSlots.map((slot: any) => (
+                <button
+                  key={slot.slot_id}
+                  onClick={() => setSelectedSlot(slot.slot_id)}
+                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === slot.slot_id ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
+                >
+                  <div className="font-bold text-lg mb-1">{slot.day_name}</div>
+                  <div className="flex items-center gap-2 text-sm opacity-80">
+                    <Clock size={16} /> {slot.label}
+                  </div>
+                  {selectedSlot === slot.slot_id && <div className="absolute top-2 right-2 bg-trust-blue text-white rounded-full p-1"><Check size={12} /></div>}
+                </button>
+              ))
+            ) : availableSlots.filter(s => s.type === 'collection' || !s.type).length > 0 ? (
               availableSlots.filter(s => s.type === 'collection' || !s.type).map(slot => (
                 <button
                   key={slot.id}
@@ -12159,8 +12148,8 @@ const BookingPage: React.FC<{
             ) : (
               <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No collection slots available.</p>
             )}
-            {/* Only show Anytime if no general collection slots */}
-            {availableSlots.filter(s => s.type === 'collection' || !s.type).length === 0 && (
+            {/* Only show Anytime if no postcode-specific AND no general collection slots */}
+            {!(postcodeResult?.collectionSlots && postcodeResult.collectionSlots.length > 0) && availableSlots.filter(s => s.type === 'collection' || !s.type).length === 0 && (
               <button
                 onClick={() => setSelectedSlot('anytime')}
                 className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === 'anytime' ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
@@ -12190,12 +12179,26 @@ const BookingPage: React.FC<{
             </p>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 mt-4">
-            {(() => {
+            {postcodeResult?.deliverySlots && postcodeResult.deliverySlots.length > 0 ? (
+              postcodeResult.deliverySlots.map((slot: any) => (
+                <button
+                  key={slot.slot_id}
+                  onClick={() => setSelectedDeliverySlot(slot.slot_id)}
+                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === slot.slot_id ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
+                >
+                  <div className="font-bold text-lg mb-1">{slot.day_name}</div>
+                  <div className="flex items-center gap-2 text-sm opacity-80">
+                    <Clock size={16} /> {slot.label}
+                  </div>
+                  {selectedDeliverySlot === slot.slot_id && <div className="absolute top-2 right-2 bg-eco-green text-white rounded-full p-1"><Check size={12} /></div>}
+                </button>
+              ))
+            ) : (() => {
+              // Fallback to regular schedule with lead-time filter
               const leadDays = parseInt(bookingSettings?.delivery_lead_days || '2');
               const selectedCollection = availableSlots.find(s => s.id === selectedSlot);
               const collectionDayName = selectedCollection?.day || '';
               const dayMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
-              // Calculate earliest delivery date based on collection + lead days
               const collectionDate = new Date();
               if (collectionDayName && dayMap[collectionDayName] !== undefined) {
                 const today = collectionDate.getDay();
@@ -12206,31 +12209,24 @@ const BookingPage: React.FC<{
               const earliestDelivery = new Date(collectionDate);
               earliestDelivery.setDate(earliestDelivery.getDate() + leadDays);
 
-              const filteredDeliverySlots = availableSlots.filter(s => {
-                if (s.type !== 'delivery') return false;
+              const deliverySlots = availableSlots.filter(s => s.type === 'delivery');
+              if (deliverySlots.length === 0) {
+                return <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No delivery slots available.</p>;
+              }
+              const filtered = deliverySlots.filter(s => {
                 if (!selectedSlot || !collectionDayName) return true;
                 const slotDayIdx = dayMap[s.day];
                 if (slotDayIdx === undefined) return true;
-                // Find next occurrence of this day
                 const check = new Date();
                 const daysUntil = (slotDayIdx - check.getDay() + 7) % 7;
                 check.setDate(check.getDate() + daysUntil);
-                if (check < earliestDelivery) {
-                  // Try next week
-                  check.setDate(check.getDate() + 7);
-                }
+                if (check < earliestDelivery) check.setDate(check.getDate() + 7);
                 return check >= earliestDelivery;
               });
-
-              if (filteredDeliverySlots.length === 0) {
-                return (
-                  <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">
-                    {selectedSlot ? `No delivery slots available ${leadDays}+ days after your collection day.` : 'No delivery slots available.'}
-                  </p>
-                );
+              if (filtered.length === 0) {
+                return <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No delivery slots available {leadDays}+ days after your collection day.</p>;
               }
-
-              return filteredDeliverySlots.map(slot => {
+              return filtered.map(slot => {
                 const slotDayIdx = dayMap[slot.day];
                 const check = new Date();
                 const daysUntil = (slotDayIdx - check.getDay() + 7) % 7;
@@ -12251,8 +12247,8 @@ const BookingPage: React.FC<{
                 );
               });
             })()}
-            {/* Only show Anytime if no general delivery slots */}
-            {availableSlots.filter(s => s.type === 'delivery').length === 0 && (
+            {/* Only show Anytime if no postcode-specific AND no general delivery slots */}
+            {!(postcodeResult?.deliverySlots && postcodeResult.deliverySlots.length > 0) && availableSlots.filter(s => s.type === 'delivery').length === 0 && (
               <button
                 onClick={() => setSelectedDeliverySlot('anytime')}
                 className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === 'anytime' ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
