@@ -1,9 +1,15 @@
 User-agent: *
+Allow: /
+Allow: /services
+Allow: /booking
+Allow: /contact
+Allow: /how-it-works
 Disallow: /master-admin
 Disallow: /master
 Disallow: /admin
 Disallow: /back-office
 Disallow: /driver-portal
+Disallow: /customer-portal
+Disallow: /track-order
 
-# If using subdomains, this applies when bots hit master subdomain
-Sitemap: https://cleanpos.app/sitemap.xml
+Sitemap: https://xp-clean.web.app/sitemap.xml

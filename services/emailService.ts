@@ -318,27 +318,257 @@ export const sendCustomerWelcomeEmail = async ({
     const businessName = storeName || 'CleanPOS Store';
     const firstName = customerName.split(' ')[0];
 
-    const subject = `Welcome to ${businessName}! Here's 10% off your first order`;
-    const textContent =
-        `Hi ${firstName},\n\n` +
-        `Welcome to ${businessName}! We're thrilled to have you on board.\n\n` +
-        `As a thank you for signing up, here's an exclusive 10% discount on your first order:\n\n` +
-        `YOUR VOUCHER CODE: ${voucherCode}\n\n` +
-        `Simply enter this code at checkout to enjoy your discount.\n\n` +
-        `What you can do with your account:\n` +
-        `- Book collections & deliveries online\n` +
-        `- Track your orders in real-time\n` +
-        `- Earn loyalty points on every order\n` +
-        `- View your order history anytime\n\n` +
-        `We look forward to providing you with a spotless service!\n\n` +
-        `Best regards,\n` +
-        `The ${businessName} Team`;
+    const subject = `Welcome to ${businessName}! Here's 10% off your first order 🎉`;
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr><td style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:40px 40px 30px;text-align:center;">
+          <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:800;letter-spacing:-0.5px;">${businessName}</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Professional Dry Cleaning & Laundry</p>
+        </td></tr>
+
+        <!-- Welcome Banner -->
+        <tr><td style="padding:30px 40px 0;">
+          <div style="background:#ecfdf5;border:2px solid #86efac;border-radius:12px;padding:24px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:8px;">🎉</div>
+            <h2 style="color:#166534;margin:0;font-size:22px;font-weight:700;">Welcome, ${firstName}!</h2>
+            <p style="color:#15803d;margin:8px 0 0;font-size:14px;">You're all set. Your account is ready to go.</p>
+          </div>
+        </td></tr>
+
+        <!-- Voucher Code -->
+        <tr><td style="padding:30px 40px 0;">
+          <div style="background:linear-gradient(135deg,#faf5ff 0%,#ede9fe 100%);border:2px dashed #8b5cf6;border-radius:12px;padding:24px;text-align:center;">
+            <p style="color:#6d28d9;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Your Exclusive Welcome Offer</p>
+            <p style="color:#5b21b6;font-size:32px;font-weight:900;margin:0;letter-spacing:1px;">10% OFF</p>
+            <p style="color:#7c3aed;font-size:13px;margin:4px 0 16px;">your first order</p>
+            <div style="background:#ffffff;border-radius:8px;padding:14px 24px;display:inline-block;border:2px solid #8b5cf6;">
+              <span style="color:#5b21b6;font-size:22px;font-weight:900;letter-spacing:3px;font-family:monospace;">${voucherCode}</span>
+            </div>
+            <p style="color:#8b5cf6;font-size:12px;margin:12px 0 0;">Enter this code at checkout to claim your discount</p>
+          </div>
+        </td></tr>
+
+        <!-- What You Can Do -->
+        <tr><td style="padding:30px 40px 0;">
+          <h3 style="color:#1e3a5f;font-size:16px;font-weight:700;margin:0 0 16px;">What you can do with your account</h3>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:12px 0;vertical-align:top;width:40px;">
+                <div style="width:36px;height:36px;background:#dbeafe;border-radius:50%;text-align:center;line-height:36px;font-size:18px;">📱</div>
+              </td>
+              <td style="padding:12px 0 12px 12px;">
+                <strong style="color:#334155;font-size:14px;">Book Online</strong>
+                <p style="color:#64748b;font-size:13px;margin:2px 0 0;">Schedule collections & deliveries from your phone or laptop</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;vertical-align:top;width:40px;">
+                <div style="width:36px;height:36px;background:#e0e7ff;border-radius:50%;text-align:center;line-height:36px;font-size:18px;">📍</div>
+              </td>
+              <td style="padding:12px 0 12px 12px;">
+                <strong style="color:#334155;font-size:14px;">Track Orders Live</strong>
+                <p style="color:#64748b;font-size:13px;margin:2px 0 0;">Real-time updates from collection to delivery</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;vertical-align:top;width:40px;">
+                <div style="width:36px;height:36px;background:#fef3c7;border-radius:50%;text-align:center;line-height:36px;font-size:18px;">⭐</div>
+              </td>
+              <td style="padding:12px 0 12px 12px;">
+                <strong style="color:#334155;font-size:14px;">Earn Loyalty Points</strong>
+                <p style="color:#64748b;font-size:13px;margin:2px 0 0;">Get rewarded every time you place an order</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:12px 0;vertical-align:top;width:40px;">
+                <div style="width:36px;height:36px;background:#d1fae5;border-radius:50%;text-align:center;line-height:36px;font-size:18px;">📋</div>
+              </td>
+              <td style="padding:12px 0 12px 12px;">
+                <strong style="color:#334155;font-size:14px;">Order History</strong>
+                <p style="color:#64748b;font-size:13px;margin:2px 0 0;">View past orders, receipts, and invoices anytime</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="padding:30px 40px 40px;">
+          <div style="border-top:1px solid #e2e8f0;padding-top:24px;text-align:center;">
+            <p style="color:#64748b;font-size:14px;font-weight:600;margin:0 0 8px;">We look forward to providing you with a spotless service! ✨</p>
+            <p style="color:#94a3b8;font-size:12px;margin:0;">Questions? Simply reply to this email or contact us directly.</p>
+            <p style="color:#cbd5e1;font-size:11px;margin:12px 0 0;">&copy; ${new Date().getFullYear()} ${businessName}. All rights reserved.</p>
+          </div>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 
     await sendBrevoEmail({
         toEmail: customerEmail,
         toName: customerName,
         subject: subject,
-        textContent: textContent,
+        htmlContent: htmlContent,
         senderName: businessName
+    });
+};
+
+export const sendStoreWelcomeEmail = async ({
+    businessName,
+    email,
+    subdomain
+}: {
+    businessName: string;
+    email: string;
+    subdomain: string;
+}) => {
+    const storeUrl = `https://xp-clean.web.app/?tenant=${subdomain}`;
+
+    const subject = `Welcome to CleanPOS — ${businessName} is Live! 🚀`;
+
+    const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f8;padding:40px 20px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr><td style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:40px 40px 30px;text-align:center;">
+          <div style="font-size:48px;margin-bottom:12px;">🚀</div>
+          <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:800;letter-spacing:-0.5px;">Welcome to CleanPOS</h1>
+          <p style="color:rgba(255,255,255,0.8);margin:8px 0 0;font-size:14px;">Your laundry & dry cleaning business just went digital</p>
+        </td></tr>
+
+        <!-- Welcome Banner -->
+        <tr><td style="padding:30px 40px 0;">
+          <div style="background:linear-gradient(135deg,#ecfdf5 0%,#d1fae5 100%);border:2px solid #86efac;border-radius:12px;padding:24px;text-align:center;">
+            <h2 style="color:#166534;margin:0;font-size:22px;font-weight:700;">${businessName} is Live!</h2>
+            <p style="color:#15803d;margin:8px 0 0;font-size:14px;">Your 15-day free trial is now active. Let's get you set up.</p>
+          </div>
+        </td></tr>
+
+        <!-- Store Details -->
+        <tr><td style="padding:30px 40px 0;">
+          <div style="background:#f8fafc;border-radius:12px;padding:24px;border:1px solid #e2e8f0;">
+            <p style="color:#64748b;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:0 0 16px;">Your Store Details</p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;">
+                  <span style="color:#94a3b8;font-size:12px;font-weight:600;">Business Name</span><br>
+                  <span style="color:#1e3a5f;font-size:16px;font-weight:700;">${businessName}</span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:10px 0;border-bottom:1px solid #f1f5f9;">
+                  <span style="color:#94a3b8;font-size:12px;font-weight:600;">Admin Email</span><br>
+                  <span style="color:#334155;font-size:14px;font-weight:600;">${email}</span>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:10px 0;">
+                  <span style="color:#94a3b8;font-size:12px;font-weight:600;">Your Store URL</span><br>
+                  <a href="${storeUrl}" style="color:#2563eb;font-size:14px;font-weight:600;text-decoration:none;">${storeUrl}</a>
+                </td>
+              </tr>
+            </table>
+          </div>
+        </td></tr>
+
+        <!-- Getting Started Steps -->
+        <tr><td style="padding:30px 40px 0;">
+          <h3 style="color:#1e3a5f;font-size:16px;font-weight:700;margin:0 0 16px;">Get started in 3 easy steps</h3>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="padding:14px 0;vertical-align:top;width:44px;">
+                <div style="width:36px;height:36px;background:linear-gradient(135deg,#2563eb,#1d4ed8);border-radius:50%;text-align:center;line-height:36px;color:#fff;font-size:16px;font-weight:800;">1</div>
+              </td>
+              <td style="padding:14px 0 14px 12px;">
+                <strong style="color:#334155;font-size:14px;">Customise Your Store</strong>
+                <p style="color:#64748b;font-size:13px;margin:2px 0 0;">Go to Store Settings — add your logo, brand colours, address and opening hours</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 0;vertical-align:top;width:44px;">
+                <div style="width:36px;height:36px;background:linear-gradient(135deg,#2563eb,#1d4ed8);border-radius:50%;text-align:center;line-height:36px;color:#fff;font-size:16px;font-weight:800;">2</div>
+              </td>
+              <td style="padding:14px 0 14px 12px;">
+                <strong style="color:#334155;font-size:14px;">Add Your Services</strong>
+                <p style="color:#64748b;font-size:13px;margin:2px 0 0;">Create service categories (Dry Cleaning, Laundry, Alterations) and set your prices</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 0;vertical-align:top;width:44px;">
+                <div style="width:36px;height:36px;background:linear-gradient(135deg,#2563eb,#1d4ed8);border-radius:50%;text-align:center;line-height:36px;color:#fff;font-size:16px;font-weight:800;">3</div>
+              </td>
+              <td style="padding:14px 0 14px 12px;">
+                <strong style="color:#334155;font-size:14px;">Start Taking Orders</strong>
+                <p style="color:#64748b;font-size:13px;margin:2px 0 0;">Share your store link with customers and watch the bookings roll in!</p>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
+
+        <!-- CTA Button -->
+        <tr><td style="padding:30px 40px 0;text-align:center;">
+          <a href="${storeUrl}" style="display:inline-block;background:linear-gradient(135deg,#2563eb 0%,#1d4ed8 100%);color:#ffffff;text-decoration:none;padding:16px 48px;border-radius:12px;font-size:16px;font-weight:700;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(37,99,235,0.4);">
+            Open Your Back Office
+          </a>
+        </td></tr>
+
+        <!-- What's Included -->
+        <tr><td style="padding:30px 40px 0;">
+          <div style="background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border-radius:12px;padding:20px 24px;border:1px solid #bfdbfe;">
+            <p style="color:#1e40af;font-size:13px;font-weight:700;margin:0 0 12px;">EVERYTHING INCLUDED IN YOUR TRIAL</p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:4px 0;color:#1e3a5f;font-size:13px;">✅ Unlimited customers & orders</td>
+                <td style="padding:4px 0;color:#1e3a5f;font-size:13px;">✅ Online booking portal</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#1e3a5f;font-size:13px;">✅ Driver tracking & dispatch</td>
+                <td style="padding:4px 0;color:#1e3a5f;font-size:13px;">✅ Automated email marketing</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;color:#1e3a5f;font-size:13px;">✅ Invoice & payment processing</td>
+                <td style="padding:4px 0;color:#1e3a5f;font-size:13px;">✅ Sales reports & analytics</td>
+              </tr>
+            </table>
+          </div>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="padding:30px 40px 40px;">
+          <div style="border-top:1px solid #e2e8f0;padding-top:24px;text-align:center;">
+            <p style="color:#64748b;font-size:14px;font-weight:600;margin:0 0 4px;">Need help getting started?</p>
+            <p style="color:#94a3b8;font-size:12px;margin:0;">Simply reply to this email — we're here to help you succeed.</p>
+            <p style="color:#cbd5e1;font-size:11px;margin:16px 0 0;">&copy; ${new Date().getFullYear()} CleanPOS by Posso Software Solutions Ltd. All rights reserved.</p>
+          </div>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+    await sendBrevoEmail({
+        toEmail: email,
+        toName: businessName,
+        subject: subject,
+        htmlContent: htmlContent,
     });
 };

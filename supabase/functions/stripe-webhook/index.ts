@@ -10,16 +10,26 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
 // Dynamic CORS for multi-tenant subdomains
 const getAllowedOrigin = (req: Request): string => {
     const origin = req.headers.get('origin') || '';
-    // Allow cleanpos.app subdomains, Firebase hosting, localhost for dev
-    if (origin.endsWith('.cleanpos.app') ||
-        origin === 'https://cleanpos.app' ||
-        origin.endsWith('.web.app') ||
-        origin.endsWith('.firebaseapp.com') ||
-        origin.startsWith('http://localhost:') ||
-        origin.startsWith('http://127.0.0.1:')) {
-        return origin;
+    const isProduction = Deno.env.get('ENVIRONMENT') !== 'development';
+
+    // Production: Only allow specific domains
+    if (isProduction) {
+        if (origin.endsWith('.web.app') ||
+            origin === 'https://xp-clean.web.app') {
+            return origin;
+        }
+    } else {
+        // Development: Allow localhost on specific ports
+        if (origin === 'http://localhost:3000' ||
+            origin === 'http://localhost:5173' ||
+            origin === 'http://127.0.0.1:3000' ||
+            origin === 'http://127.0.0.1:5173' ||
+            origin.endsWith('.web.app') ||
+            origin === 'https://xp-clean.web.app') {
+            return origin;
+        }
     }
-    return 'https://cleanpos.app';
+    return 'https://xp-clean.web.app';
 };
 
 const getCorsHeaders = (req: Request) => ({
@@ -48,10 +58,43 @@ serve(async (req) => {
             event = stripe.webhooks.constructEvent(body, signature, Deno.env.get('STRIPE_WEBHOOK_SECRET')!);
         } catch (err: any) {
             console.error(`Webhook signature verification failed: ${err.message}`);
-            return new Response(`Webhook Error: ${err.message}`, { status: 400, headers: corsHeaders });
+            // SECURITY: Don't expose internal error details
+            return new Response('Webhook verification failed', { status: 400, headers: corsHeaders });
         }
 
         // Handle the event
+        // Auto-mark invoice/order as paid when Stripe Checkout completes
+        if (event.type === 'checkout.session.completed' || event.type === 'payment_intent.succeeded') {
+            const obj = event.data.object as any;
+            const orderId = obj.metadata?.order_id;
+            const tenantId = obj.metadata?.tenant_id;
+
+            if (orderId && tenantId) {
+                const supabaseClient = createClient(
+                    Deno.env.get('SUPABASE_URL') ?? '',
+                    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+                );
+
+                const paidAt = new Date().toISOString();
+
+                // Update order payment status
+                await supabaseClient
+                    .from('cp_orders')
+                    .update({ payment_status: 'paid', stripe_sessionId: obj.id })
+                    .eq('id', orderId)
+                    .eq('tenant_id', tenantId);
+
+                // Update associated invoice
+                await supabaseClient
+                    .from('cp_invoices')
+                    .update({ status: 'paid', paid_at: paidAt })
+                    .eq('order_id', orderId)
+                    .eq('tenant_id', tenantId);
+
+                console.log(`[Stripe] Order ${orderId} and invoice marked as paid.`);
+            }
+        }
+
         if (event.type === 'account.updated') {
             const account = event.data.object;
 
@@ -98,7 +141,7 @@ serve(async (req) => {
                         .limit(1)
                         .maybeSingle();
 
-                    const email = staff?.login_id || 'support@cleanpos.app';
+                    const email = staff?.login_id || 'support@xp-clean.web.app';
                     const name = staff?.name || settings.company_name || 'Partner';
 
                     await sendWelcomeEmail(email, name, settings.company_name || 'Your Store');
@@ -112,7 +155,8 @@ serve(async (req) => {
 
     } catch (error: any) {
         console.error('Webhook processing error:', error);
-        return new Response(JSON.stringify({ error: error.message }), {
+        // SECURITY: Don't expose internal error details
+        return new Response(JSON.stringify({ error: 'Webhook processing failed' }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 400,
         });
@@ -156,7 +200,7 @@ async function sendWelcomeEmail(email: string, name: string, appName: string) {
                 'content-type': 'application/json'
             },
             body: JSON.stringify({
-                sender: { name: appName, email: 'info@cleanpos.app' },
+                sender: { name: appName, email: 'info@xp-clean.web.app' },
                 to: [{ email: email, name: name }],
                 subject: subject,
                 htmlContent: htmlContent

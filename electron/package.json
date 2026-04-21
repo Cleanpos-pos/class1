@@ -1,7 +1,7 @@
 {
-  "name": "cleanpos-dispatch",
-  "version": "1.3.0",
-  "description": "CleanPos Dispatch - Professional Dry Cleaning & Laundry POS with Shipday Driver Dispatch - Posso One Suite",
+  "name": "cleanpos",
+  "version": "1.2.6",
+  "description": "CleanPos - Professional Dry Cleaning & Laundry POS - Posso One Suite",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -21,8 +21,8 @@
     "electron-builder": "^24.9.1"
   },
   "build": {
-    "appId": "com.posso.cleanpos-dispatch",
-    "productName": "CleanPos Dispatch",
+    "appId": "com.posso.cleanpos",
+    "productName": "CleanPos",
     "copyright": "Copyright © 2024 Posso. All rights reserved.",
     "directories": {
       "output": "dist",
@@ -46,7 +46,7 @@
           "arch": ["x64"]
         }
       ],
-      "artifactName": "CleanPos-Dispatch-Setup-${version}.${ext}",
+      "artifactName": "CleanPos-Setup-${version}.${ext}",
       "publisherName": "Posso"
     },
     "nsis": {
@@ -57,7 +57,7 @@
       "license": "build/license.txt",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "CleanPos Dispatch",
+      "shortcutName": "CleanPos",
       "include": "build/installer.nsh",
       "warningsAsErrors": false
     }

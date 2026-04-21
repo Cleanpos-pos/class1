@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Posso CleanPOS — Priory Dry Cleaners Feature Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Inter', sans-serif; background: #0f172a; color: #1e293b; }
+
+  .slide { width: 1100px; min-height: 700px; margin: 30px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.3); page-break-after: always; position: relative; }
+  .slide-inner { padding: 50px 60px; min-height: 700px; display: flex; flex-direction: column; }
+  .slide-footer { position: absolute; bottom: 16px; right: 30px; font-size: 10px; color: #94a3b8; }
+  .slide-footer-left { position: absolute; bottom: 16px; left: 30px; font-size: 10px; color: #94a3b8; }
+
+  .slide-header { display: flex; align-items: center; gap: 14px; margin-bottom: 30px; }
+  .icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+  h2 { font-size: 28px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; }
+  .subtitle { font-size: 13px; color: #64748b; margin-top: 2px; }
+
+  .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; }
+  .feature-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; }
+  .feature-card h4 { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+  .feature-card p { font-size: 12px; color: #64748b; line-height: 1.5; }
+
+  .phase-card { background: #fffbeb; border: 2px solid #fbbf24; border-radius: 12px; padding: 18px; margin-bottom: 12px; }
+  .phase-card h4 { font-size: 14px; font-weight: 700; color: #92400e; margin-bottom: 4px; }
+  .phase-card p { font-size: 12px; color: #78350f; line-height: 1.5; }
+
+  .phase-card-green { background: #ecfdf5; border: 2px solid #34d399; }
+  .phase-card-green h4 { color: #065f46; }
+  .phase-card-green p { color: #047857; }
+
+  .phase-card-blue { background: #eff6ff; border: 2px solid #60a5fa; }
+  .phase-card-blue h4 { color: #1e40af; }
+  .phase-card-blue p { color: #1d4ed8; }
+
+  .phase-card-purple { background: #f5f3ff; border: 2px solid #a78bfa; }
+  .phase-card-purple h4 { color: #5b21b6; }
+  .phase-card-purple p { color: #6d28d9; }
+
+  .print-btn { display: block; margin: 30px auto; padding: 15px 40px; background: #2563eb; color: white; border: none; border-radius: 10px; font-size: 18px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; position: sticky; top: 10px; z-index: 100; }
+  .print-btn:hover { background: #1d4ed8; }
+
+  @media print {
+    body { background: white; }
+    .slide { margin: 0; border-radius: 0; box-shadow: none; page-break-after: always; height: 100vh; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">Download as PDF (Print to PDF)</button>
+
+<!-- SLIDE 1: Title -->
+<div class="slide" style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);">
+  <div class="slide-inner" style="justify-content: center; align-items: center; text-align: center; color: white;">
+    <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #2563eb, #7c3aed); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 40px; box-shadow: 0 12px 40px rgba(37,99,235,0.4);">&#128084;</div>
+    <h1 style="font-size: 44px; font-weight: 900; letter-spacing: -1.5px; margin-bottom: 8px;">Posso CleanPOS</h1>
+    <p style="font-size: 18px; color: #94a3b8; margin-bottom: 40px;">Pick-Up &amp; Delivery Platform — Feature Guide</p>
+
+    <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 24px 40px; display: inline-block;">
+      <p style="font-size: 12px; color: #94a3b8; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 8px;">Prepared Exclusively For</p>
+      <p style="font-size: 28px; font-weight: 800; color: #60a5fa;">Priory Dry Cleaners</p>
+    </div>
+
+    <div style="margin-top: 50px; display: flex; gap: 40px; justify-content: center;">
+      <div><p style="font-size: 28px; font-weight: 800; color: #3b82f6;">30+</p><p style="font-size: 11px; color: #64748b;">Features</p></div>
+      <div><p style="font-size: 28px; font-weight: 800; color: #3b82f6;">£1</p><p style="font-size: 11px; color: #64748b;">Per Order</p></div>
+      <div><p style="font-size: 28px; font-weight: 800; color: #3b82f6;">5 min</p><p style="font-size: 11px; color: #64748b;">Setup Time</p></div>
+      <div><p style="font-size: 28px; font-weight: 800; color: #3b82f6;">24/7</p><p style="font-size: 11px; color: #64748b;">Online Booking</p></div>
+    </div>
+  </div>
+  <div class="slide-footer" style="color: rgba(255,255,255,0.3);">CONFIDENTIAL — Posso CleanPOS 2026</div>
+  <div class="slide-footer-left" style="color: rgba(255,255,255,0.3);">0808 175 3956 &bull; www.posso.co.uk</div>
+</div>
+
+<!-- SLIDE 2: Online Booking -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #dbeafe; color: #2563eb;">&#128197;</div>
+      <div><h2>Online Booking System</h2><div class="subtitle">4-step booking flow — customers book collection &amp; delivery in under 2 minutes</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128722; Step 1: Select Items</h4>
+        <p>Customers browse your service catalogue with categories, images, and pricing. Add items to basket with quantity controls and notes per item.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128666; Step 2: Collection Slot</h4>
+        <p>Choose a collection time slot based on your configured availability. Postcode validation ensures you only show slots for areas you serve.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128230; Step 3: Delivery Slot</h4>
+        <p>Select when they want items delivered back. Slots are capacity-limited so you never overcommit. Surcharges applied per postcode area.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128179; Step 4: Review &amp; Pay</h4>
+        <p>Review order, apply discount codes or loyalty points, then pay securely via Stripe Checkout. Automated confirmation email sent instantly.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127942; Loyalty Points</h4>
+        <p>Customers earn points on every order. Redeem points for discounts at checkout. Configurable earn rate and redemption value per store.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127873; Discount Codes &amp; Promos</h4>
+        <p>Create voucher codes (% or fixed), BOGO deals, and bundle offers. Set expiry dates and one-time-use limits. Target specific customer segments.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 3: Order Management -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #dcfce7; color: #16a34a;">&#128230;</div>
+      <div><h2>Order Management Dashboard</h2><div class="subtitle">Complete command centre — from booking to final delivery</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128203; Status Workflow</h4>
+        <p>One-tap progression: Dispatch → Collect → Collected → Cleaning → Ready → Deliver → Delivered → Complete. Each status updates the customer automatically.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128269; Smart Filtering</h4>
+        <p>Filter by status, date range (today, last 7 days, month, custom), and search by customer name. Instant order count per status.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#9999;&#65039; Edit Orders</h4>
+        <p>Add/remove items, adjust prices, add repair charges, custom surcharges, and override collection/delivery slots — all from one modal.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128424; Driver Assignment</h4>
+        <p>Assign drivers to orders from a dropdown. Supports both in-house drivers and Shipday carrier integration for third-party delivery.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128424; QR Tag Scanner</h4>
+        <p>Scan garment barcode tags via webcam to instantly locate any order. Perfect for in-store staff processing large volumes.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128176; Payment Tracking</h4>
+        <p>See payment status at a glance — "Paid" (Stripe), "On Account" (manual billing). Track which orders need invoicing.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 4: Printing -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #fef3c7; color: #d97706;">&#128424;</div>
+      <div><h2>Printing &amp; Labelling</h2><div class="subtitle">Thermal printing for receipts, garment tags, and bag labels</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128196; Customer Receipts</h4>
+        <p>Full receipt with order number, items, prices, totals, and store branding. Printed on 80mm thermal paper via USB or network printer.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127991;&#65039; Bag Tags (Btags)</h4>
+        <p>60mm continuous label with order number, customer name, and barcode. Applied to garment bags for easy identification during processing.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128084; Garment Tags (DStubs)</h4>
+        <p>Individual garment tags in 76mm or 40mm formats. Each tag has order number, item name, and scannable barcode for tracking.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128424; Print All</h4>
+        <p>One-click "Print All" button generates receipt + bag tags + garment tags in sequence. Saves time during busy intake periods.</p>
+      </div>
+    </div>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px 24px; margin-top: 20px;">
+      <p style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">Supported Hardware</p>
+      <p style="font-size: 13px; color: #64748b;">Bixolon SRP-275III (76mm dot matrix) &bull; 80mm Thermal XPrinter &bull; Brother 60mm continuous label printer &bull; Windows PC (Surface Pro touchscreen supplied)</p>
+      <p style="font-size: 13px; color: #2563eb; font-weight: 700; margin-top: 6px;">Complete hardware package: approx. £800 delivered</p>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 5: Customer Portal -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #ede9fe; color: #7c3aed;">&#128100;</div>
+      <div><h2>Customer Portal</h2><div class="subtitle">Self-service account area for your customers</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128203; Order History</h4>
+        <p>Full order history with status, items, totals, and tracking. Customers can see exactly where their order is at any time.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128205; Live Tracking</h4>
+        <p>Real-time delivery map showing driver location. Status updates from "Out for Delivery" to "Delivered" with live GPS via Shipday.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127942; Loyalty Dashboard</h4>
+        <p>View points balance, earned points per order, and redemption history. Encourages repeat business through visible rewards.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#9881;&#65039; Account Settings</h4>
+        <p>Update name, email, phone, address, and preferences. Manage notification settings and saved payment methods.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128231; Automated Emails</h4>
+        <p>Order confirmations, status updates, delivery notifications, and marketing campaigns — all branded HTML emails sent via Brevo.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128274; Secure Login</h4>
+        <p>Email + password authentication with bcrypt hashing. Password reset via email. Account created during first booking or signup.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 6: Delivery & Logistics -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #d1fae5; color: #059669;">&#128666;</div>
+      <div><h2>Delivery &amp; Logistics</h2><div class="subtitle">Postcode areas, time slots, driver management, and live tracking</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128205; Postcode Areas</h4>
+        <p>Define service areas by postcode prefix (e.g. LE1, LE2). Set delivery surcharges per area. Only show available slots for valid postcodes.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128197; Time Slot Management</h4>
+        <p>Configure collection and delivery slots per postcode area with capacity limits. Slots auto-hide when fully booked.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128666; Shipday Integration</h4>
+        <p>Real-time driver tracking, carrier assignment, and delivery status sync. Webhook updates order status automatically.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128100; Driver Portal</h4>
+        <p>Dedicated portal for drivers — view assigned deliveries, update status, capture delivery photos as proof of delivery.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127760; Google Maps</h4>
+        <p>UK postcode autocomplete, geocoding, and distance calculation. Validates addresses and calculates delivery distances.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128247; Delivery Photos</h4>
+        <p>Drivers capture proof-of-delivery photos directly in the app. Photos stored against the order for dispute resolution.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 7: Payments -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #dbeafe; color: #2563eb;">&#128179;</div>
+      <div><h2>Payments &amp; Billing</h2><div class="subtitle">Stripe Connect with automatic fee splitting</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128179; Stripe Checkout</h4>
+        <p>Secure hosted payment page. Customer pays order total + 50p service fee. Card details never touch your server.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128176; Automatic Payouts</h4>
+        <p>Payments go directly to your bank via Stripe Connect. Platform fee (£1 + VAT) deducted automatically. No manual invoicing needed.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128196; On Account</h4>
+        <p>Stores without Stripe or orders under £15 go "On Account" for manual billing. Orange badge in back office for easy identification.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128176; Franchise Shared Stripe</h4>
+        <p>Multi-store groups can share one Stripe Connect account across all branches, or each store can connect individually.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127942; Minimum Order Value</h4>
+        <p>Configurable minimum order value for Stripe payments (default £15). Toggle whether minimum applies before or after discounts.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128200; Revenue Reports</h4>
+        <p>Track revenue by day, week, month. See payment breakdowns, average order values, and top-spending customers.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 8: Marketing -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #fce7f3; color: #db2777;">&#128231;</div>
+      <div><h2>Marketing &amp; Email Campaigns</h2><div class="subtitle">Built-in email marketing with beautiful HTML templates</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128231; 10 HTML Templates</h4>
+        <p>Pre-built branded emails: Welcome, We Miss You, Seasonal Promo, Weekly Special, Loyalty Reward, Referral, Corporate Welcome, and more.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127919; Customer Segments</h4>
+        <p>Target specific audiences: All customers, Inactive (4+ weeks), One-timers, Laundry Only, Dry Clean Only. Send to the right people.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128640; Referral Programme</h4>
+        <p>Give £5, Get £5 — customers share their unique code via WhatsApp, Email, or copy link. Both parties rewarded automatically.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127873; Discount Codes</h4>
+        <p>Create percentage or fixed-amount codes with optional expiry dates and single-use limits. Track redemptions in real time.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 9: Reports -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #ecfdf5; color: #059669;">&#128200;</div>
+      <div><h2>Reports &amp; Analytics</h2><div class="subtitle">9 report views with charts, tables, and CSV export</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card"><h4>&#128200; Dashboard</h4><p>KPIs, 14-day revenue trend, top 5 services, busiest times, active subscriptions. Your daily overview.</p></div>
+      <div class="feature-card"><h4>&#128176; Revenue</h4><p>Revenue trend chart, order detail table, period-over-period comparison. Filter by 7D, 30D, 90D, 1Y or custom range.</p></div>
+      <div class="feature-card"><h4>&#127942; Top Items</h4><p>Top 10 items by revenue, searchable table of all items with quantity sold, revenue, and average price.</p></div>
+      <div class="feature-card"><h4>&#128338; Busiest Times</h4><p>Weekly heatmap showing order volume by hour and day. Identify peak times for staffing and promotions.</p></div>
+      <div class="feature-card"><h4>&#128101; Customers</h4><p>Segmentation (one-time, regular, loyal), top customers by spend, detailed customer analytics table.</p></div>
+      <div class="feature-card"><h4>&#128666; Drivers</h4><p>Collections, deliveries, and total jobs per driver. Performance bars and efficiency tracking.</p></div>
+    </div>
+    <p style="text-align: center; color: #64748b; font-size: 13px; margin-top: 16px;">Plus: Preferences report, Services report, Subscriptions report &bull; CSV export &bull; Print reports</p>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 10: Multi-Store / Franchise -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #ede9fe; color: #7c3aed;">&#127970;</div>
+      <div><h2>Multi-Store &amp; Franchise</h2><div class="subtitle">Central control panel for managing multiple branches</div></div>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h4>&#128200; Group Dashboard</h4>
+        <p>Aggregated view across all stores: total revenue, total orders, active stores, average order value, total customers.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#127970; Store Performance</h4>
+        <p>Per-store breakdown with orders, revenue, customer count, and subscription status. Search and filter stores instantly.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128279; Store Switcher</h4>
+        <p>One-click "Open" button jumps into any branch's back office in a new tab. Manage individual stores without logging out.</p>
+      </div>
+      <div class="feature-card">
+        <h4>&#128179; Shared Stripe</h4>
+        <p>Option to share one Stripe Connect account across all branches, or let each store connect individually. Your choice.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 11: Priory Custom Features — NOW LIVE -->
+<div class="slide">
+  <div class="slide-inner">
+    <div class="slide-header">
+      <div class="icon" style="background: #dcfce7; color: #16a34a;">&#9989;</div>
+      <div><h2>Priory Custom Features — Now Live</h2><div class="subtitle">All 12 requested features built and deployed</div></div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1;">
+      <div class="phase-card-green">
+        <h4>&#9989; Per-Kilo Wash &amp; Fold</h4>
+        <p>Customers select wash &amp; fold by weight with configurable per-kilo rate. Disclaimer warns that dry cleaning items mixed in will be washed.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Pause Subscription</h4>
+        <p>Customers pause/resume their recurring service directly from their account portal. No phone call needed — instant toggle.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Failed Collection Charge</h4>
+        <p>Configurable charge auto-applied when collection fails. Must cancel before 12 noon or charges apply. Amount set in Store Details.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Repeat Previous Order</h4>
+        <p>Signed-in customers see last 3 completed orders in the basket area. One click re-adds all items — fastest way to reorder.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Email Extra Charges</h4>
+        <p>"Invoice" button on orders sends customer a payment request email. Order status tracks invoice_sent state for follow-up.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Manual Phone Orders</h4>
+        <p>Green "Phone Order" button in Order Management. Full modal: customer details, service picker, notes, instant order creation.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; IP Network Printing</h4>
+        <p>Ethernet printer support configured via IP address and port in Store Details. Works alongside existing USB thermal printers.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Special Run Assignment</h4>
+        <p>Define named delivery runs in settings. Assign orders to runs via dropdown in the orders table for batch dispatch planning.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Corporate Reporting</h4>
+        <p>Dedicated "Corporate" view in Reports with per-account analytics: orders, revenue, discount rates, and Account IDs.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Group Report Downloads</h4>
+        <p>Franchise Group Dashboard has branch dropdown + CSV export. Download reports for a single branch or all branches combined.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; Corporate Marketing Filters</h4>
+        <p>Account ID field in corporate signup. Marketing tab has "Corporate Only" segment and Account ID dropdown filter.</p>
+      </div>
+      <div class="phase-card-green">
+        <h4>&#9989; LinkedIn Social Integration</h4>
+        <p>LinkedIn URL field in Store Details → Social Media. Displayed alongside Facebook and Instagram in the store footer.</p>
+      </div>
+    </div>
+    <div class="slide-footer">Posso CleanPOS — Priory Dry Cleaners</div>
+  </div>
+</div>
+
+<!-- SLIDE 12: Closing -->
+<div class="slide" style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);">
+  <div class="slide-inner" style="justify-content: center; align-items: center; text-align: center; color: white;">
+    <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #2563eb, #7c3aed); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 40px;">&#128084;</div>
+    <h1 style="font-size: 40px; font-weight: 900; letter-spacing: -1px; margin-bottom: 8px;">Posso CleanPOS</h1>
+    <p style="font-size: 16px; color: #94a3b8; margin-bottom: 40px;">The complete digital platform for modern garment care businesses</p>
+
+    <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 30px 50px; max-width: 600px;">
+      <p style="font-size: 18px; color: #e2e8f0; line-height: 1.6; margin-bottom: 20px;">
+        "We're ready to help Priory Dry Cleaners go fully digital — from online bookings and payments to delivery tracking and multi-store management."
+      </p>
+      <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
+        <p style="font-size: 16px; font-weight: 700; color: white;">Let's get started.</p>
+      </div>
+    </div>
+
+    <div style="margin-top: 40px;">
+      <p style="font-size: 22px; font-weight: 800; color: #3b82f6; margin-bottom: 6px;">0808 175 3956</p>
+      <p style="font-size: 14px; color: #94a3b8;">app@posso.uk &bull; www.posso.co.uk &bull; xp-clean.web.app</p>
+    </div>
+  </div>
+  <div class="slide-footer" style="color: rgba(255,255,255,0.3);">CONFIDENTIAL — Posso CleanPOS 2026</div>
+</div>
+
+<button class="print-btn no-print" onclick="window.print()">Download as PDF (Print to PDF)</button>
+
+</body>
+</html>

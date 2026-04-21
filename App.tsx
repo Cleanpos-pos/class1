@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle, XCircle, Hash, Delete, ImageIcon } from 'lucide-react';
+import { Menu, X, Phone, Clock, MapPin, Truck, Leaf, Shirt, ArrowRight, Settings, Lock, Unlock, Sun, Moon, GripVertical, ShoppingBag, Plus, Loader2, RefreshCw, TrendingUp, TrendingDown, AlertCircle, Edit3, BedDouble, Sparkles, Check, Upload, ToggleLeft, ToggleRight, Users, Tag, Gift, Ticket, Search, Package, Calendar, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Minus, Repeat, Mail, UserPlus, Info, Send, FileText, Copy, Save, Download, User, LogIn, LogOut, FileCheck, Scissors, Droplet, Trash2, PackageCheck, CheckCircle, CheckCircle2, PieChart, Globe, ShieldCheck, Layers, Zap, BarChart3, CreditCard, Rocket, Facebook, Instagram, Pause, Play, ExternalLink, CalendarDays, DollarSign, Activity, Target, Award, Timer, Percent, ArrowUpRight, ArrowDownRight, Filter, Printer, LayoutDashboard, Receipt, Heart, Building2, MessageCircle, XCircle, Hash, Delete, ImageIcon, BookOpen } from 'lucide-react';
 import jsQR from 'jsqr';
 // SECURITY WARNING: xlsx has known vulnerabilities (Prototype Pollution, ReDoS)
 // Consider replacing with 'exceljs' for production use
@@ -8,7 +8,7 @@ import * as XLSX from 'xlsx';
 import { Page, TimeSlot, CartItem, DeliveryOption, DiscountCode } from './types';
 import { PostcodeArea, PostcodeServiceSlot } from './types/postcode';
 import { supabase } from './supabaseClient';
-import { sendOrderConfirmation, sendBrevoEmail, sendCustomerSignupNotification, sendCustomerWelcomeEmail } from './services/emailService';
+import { sendOrderConfirmation, sendBrevoEmail, sendCustomerSignupNotification, sendCustomerWelcomeEmail, sendStoreWelcomeEmail } from './services/emailService';
 import { ShipdayService } from './services/ShipdayService';
 import DeliveryMap from './components/DeliveryMap';
 import { hashPassword, verifyPassword } from './utils/passwordUtils';
@@ -136,6 +136,16 @@ const useSEO = (tenant: any, currentPage: string) => {
       document.head.appendChild(metaKeywords);
     }
     metaKeywords.setAttribute('content', tenant.seo_keywords || '');
+
+    // Set robots meta — only customer-facing pages are crawlable
+    let metaRobots = document.querySelector('meta[name="robots"]');
+    if (!metaRobots) {
+      metaRobots = document.createElement('meta');
+      metaRobots.setAttribute('name', 'robots');
+      document.head.appendChild(metaRobots);
+    }
+    const crawlablePages = ['home', 'services', 'booking', 'contact', 'how-it-works', 'saas-landing'];
+    metaRobots.setAttribute('content', crawlablePages.includes(currentPage) ? 'index, follow' : 'noindex, nofollow');
   }, [tenant, currentPage]);
 };
 
@@ -807,6 +817,9 @@ const Footer: React.FC<{
               {tenant?.social_instagram && (
                 <a href={tenant.social_instagram} target="_blank" rel="noopener noreferrer" className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center hover:bg-pink-600 transition-colors cursor-pointer"><Instagram size={18} /></a>
               )}
+              {tenant?.social_linkedin && (
+                <a href={tenant.social_linkedin} target="_blank" rel="noopener noreferrer" className="w-10 h-10 bg-gray-900 rounded-full flex items-center justify-center hover:bg-blue-700 transition-colors cursor-pointer"><ExternalLink size={18} /></a>
+              )}
             </div>
           </div>
           <div>
@@ -852,17 +865,16 @@ const Footer: React.FC<{
             <span className="ml-2 px-2 py-0.5 bg-gray-900 rounded text-[10px] border border-gray-800 uppercase tracking-widest">SaaS Powered</span>
           </p>
           <div className="flex gap-6 items-center">
-            <button onClick={() => handleSecureTap('admin', () => onStaffLogin('admin'))} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
-              <Lock size={14} /> Admin Access {tapCounts['admin'] > 0 && tapCounts['admin'] < 5 && <span className="text-xs text-trust-blue">({tapCounts['admin']}/5)</span>}
-            </button>
-            {onMasterAuth && (
-              <button onClick={() => handleSecureTap('master', onMasterAuth)} className="text-[10px] uppercase font-bold text-gray-800 hover:text-gray-700 transition">
-                Master System {tapCounts['master'] > 0 && tapCounts['master'] < 5 && <span className="text-trust-blue">({tapCounts['master']}/5)</span>}
-              </button>
+            {(window as any).electronPrint && (
+              <>
+                <button onClick={() => handleSecureTap('admin', () => onStaffLogin('admin'))} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
+                  <Lock size={14} /> Admin Access {tapCounts['admin'] > 0 && tapCounts['admin'] < 5 && <span className="text-xs text-trust-blue">({tapCounts['admin']}/5)</span>}
+                </button>
+                <button onClick={() => handleSecureTap('driver', () => onStaffLogin('driver'))} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
+                  <Truck size={14} /> Driver Login {tapCounts['driver'] > 0 && tapCounts['driver'] < 5 && <span className="text-xs text-trust-blue">({tapCounts['driver']}/5)</span>}
+                </button>
+              </>
             )}
-            <button onClick={() => handleSecureTap('driver', () => onStaffLogin('driver'))} className="text-sm font-bold text-gray-500 hover:text-white transition flex items-center gap-2 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800">
-              <Truck size={14} /> Driver Login {tapCounts['driver'] > 0 && tapCounts['driver'] < 5 && <span className="text-xs text-trust-blue">({tapCounts['driver']}/5)</span>}
-            </button>
           </div>
         </div>
       </div>
@@ -1237,6 +1249,7 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [welcomePopup, setWelcomePopup] = useState<{ show: boolean; code: string; name: string }>({ show: false, code: '', name: '' });
+  const [referralCode, setReferralCode] = useState('');
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1290,6 +1303,32 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
       } else {
         // Notify store owner
         sendCustomerSignupNotification({ customerName: name, customerEmail: email, customerPhone: phone, storeEmail, storeName });
+
+        // Process referral code if provided
+        if (referralCode.trim()) {
+          // Find the referrer — match by email prefix (uppercase first 8 chars) or tenant name prefix
+          const { data: allCustomers } = await supabase.from('cp_customers').select('id, email, name, loyalty_points').eq('tenant_id', tenantId);
+          const referrer = allCustomers?.find(c => {
+            const code = c.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
+            return code === referralCode.trim().toUpperCase();
+          });
+          if (referrer) {
+            // Set referred_by on the new customer
+            await supabase.from('cp_customers').update({ referred_by: referrer.id }).eq('id', data.id);
+            // Create £5 discount code for the new customer
+            const refDiscountCode = `REF${referralCode.trim().substring(0, 6)}`;
+            await supabase.from('cp_discount_codes').upsert([{
+              code: refDiscountCode,
+              discount_type: 'fixed',
+              discount_value: 5,
+              one_time_use: true,
+              active: true,
+              tenant_id: tenantId
+            }], { onConflict: 'tenant_id,code' });
+            // Award £5 worth of loyalty points to the referrer (50 points = £5)
+            await supabase.from('cp_customers').update({ loyalty_points: (referrer.loyalty_points || 0) + 50 }).eq('id', referrer.id);
+          }
+        }
 
         // Ensure SIGNUP10 voucher exists for this tenant (idempotent)
         const welcomeCode = 'SIGNUP10';
@@ -1419,6 +1458,12 @@ const CustomerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void; onLog
                 )}
               </div>
               <input type="password" required value={password} onChange={e => setPassword(e.target.value)} className="w-full border-2 border-gray-100 focus:border-trust-blue rounded-xl px-4 py-2.5 outline-none transition-all" placeholder="••••••••" />
+            </div>
+          )}
+          {isSignUp && !isForgot && (
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1 uppercase tracking-wider">Referral Code <span className="text-gray-400 font-normal normal-case">(optional)</span></label>
+              <input type="text" value={referralCode} onChange={e => setReferralCode(e.target.value.toUpperCase())} className="w-full border-2 border-gray-100 focus:border-green-500 rounded-xl px-4 py-2.5 outline-none transition-all font-mono" placeholder="e.g. JOHNDOE" />
             </div>
           )}
 
@@ -1777,6 +1822,11 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
                               <CheckCircle2 size={10} /> Paid
                             </span>
                           )}
+                          {order.payment_method === 'on_account' && order.payment_status !== 'paid' && (
+                            <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase flex items-center gap-1 border border-orange-200">
+                              On Account
+                            </span>
+                          )}
                         </div>
                         <p className="text-sm text-gray-500">{new Date(order.created_at).toLocaleDateString()} • {order.items?.length || 0} items</p>
 
@@ -1933,6 +1983,239 @@ const CustomerPortalPage: React.FC<{ user: any; onUpdateUser: (u: any) => void; 
   );
 };
 
+// ─── GROUP DASHBOARD TAB (Franchise Control Panel) ───
+const GroupDashboardTab: React.FC<{ parentTenantId: string; parentTenant: any }> = ({ parentTenantId, parentTenant }) => {
+  const [childTenants, setChildTenants] = useState<any[]>([]);
+  const [storeOrders, setStoreOrders] = useState<Record<string, any[]>>({});
+  const [storeCustomers, setStoreCustomers] = useState<Record<string, number>>({});
+  const [groupStats, setGroupStats] = useState({ totalRevenue: 0, totalOrders: 0, activeStores: 0, avgOrderValue: 0, totalCustomers: 0 });
+  const [dateRange, setDateRange] = useState<'today' | '7d' | '30d' | '90d' | '1y'>('7d');
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [franchiseStripeMode, setFranchiseStripeMode] = useState<'individual' | 'shared'>('individual');
+  const [parentStripeConnected, setParentStripeConnected] = useState(false);
+  const [savingStripeMode, setSavingStripeMode] = useState(false);
+
+  const getDateStart = (range: string) => {
+    const d = new Date();
+    if (range === 'today') return d.toISOString().split('T')[0];
+    if (range === '7d') d.setDate(d.getDate() - 7);
+    else if (range === '30d') d.setDate(d.getDate() - 30);
+    else if (range === '90d') d.setDate(d.getDate() - 90);
+    else if (range === '1y') d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().split('T')[0];
+  };
+
+  const fetchGroupData = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch child tenants
+      const { data: children } = await supabase.from('tenants').select('*').eq('parent_tenant_id', parentTenantId).order('name');
+      if (!children || children.length === 0) { setChildTenants([]); setLoading(false); return; }
+      setChildTenants(children);
+      const childIds = children.map((c: any) => c.id);
+
+      // 2. Fetch orders across all child stores
+      const startDate = getDateStart(dateRange);
+      const endDate = new Date().toISOString().split('T')[0];
+      const { data: orders } = await supabase.from('cp_orders').select('tenant_id, total_amount, status, created_at, payment_method, payment_status').in('tenant_id', childIds).gte('created_at', startDate).lte('created_at', endDate + 'T23:59:59');
+
+      // 3. Fetch customer counts per store
+      const { data: customers } = await supabase.from('cp_customers').select('tenant_id').in('tenant_id', childIds);
+      const custByStore: Record<string, number> = {};
+      childIds.forEach((id: string) => custByStore[id] = 0);
+      customers?.forEach((c: any) => { if (custByStore[c.tenant_id] !== undefined) custByStore[c.tenant_id]++; });
+      setStoreCustomers(custByStore);
+
+      // 4. Group orders by store
+      const byStore: Record<string, any[]> = {};
+      childIds.forEach((id: string) => byStore[id] = []);
+      orders?.forEach((o: any) => { if (byStore[o.tenant_id]) byStore[o.tenant_id].push(o); });
+      setStoreOrders(byStore);
+
+      // 5. Aggregate stats
+      const totalRev = orders?.reduce((sum: number, o: any) => sum + (parseFloat(o.total_amount) || 0), 0) || 0;
+      const totalOrd = orders?.length || 0;
+      const totalCust = customers?.length || 0;
+      setGroupStats({
+        totalRevenue: totalRev,
+        totalOrders: totalOrd,
+        activeStores: children.filter((c: any) => c.subscription_status === 'active' || c.subscription_status === 'trialing').length,
+        avgOrderValue: totalOrd > 0 ? totalRev / totalOrd : 0,
+        totalCustomers: totalCust
+      });
+    } catch (err) { console.error('[GroupDashboard] Error:', err); }
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchGroupData(); }, [dateRange, parentTenantId]);
+
+  const filteredStores = childTenants.filter(s => !searchTerm || s.name?.toLowerCase().includes(searchTerm.toLowerCase()) || s.subdomain?.toLowerCase().includes(searchTerm.toLowerCase()) || s.town_city?.toLowerCase().includes(searchTerm.toLowerCase()));
+
+  const handleOpenStore = (subdomain: string) => {
+    window.open(`${window.location.origin}/back-office?tenant=${subdomain}`, '_blank');
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2"><Building2 size={24} /> Group Dashboard</h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">{parentTenant.name} — {childTenants.length} store{childTenants.length !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {(['today', '7d', '30d', '90d', '1y'] as const).map(r => (
+            <button key={r} onClick={() => setDateRange(r)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${dateRange === r ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'}`}>
+              {r === 'today' ? 'Today' : r === '1y' ? '1Y' : r.toUpperCase()}
+            </button>
+          ))}
+          <button onClick={fetchGroupData} className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 transition-all"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600" size={40} /></div>
+      ) : (
+        <>
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            {[
+              { label: 'Total Revenue', value: `£${groupStats.totalRevenue.toFixed(2)}`, icon: <DollarSign size={20} />, color: 'text-green-600', bg: 'bg-green-50 dark:bg-green-900/20' },
+              { label: 'Total Orders', value: groupStats.totalOrders.toLocaleString(), icon: <Package size={20} />, color: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+              { label: 'Active Stores', value: `${groupStats.activeStores}/${childTenants.length}`, icon: <Building2 size={20} />, color: 'text-purple-600', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+              { label: 'Avg Order Value', value: `£${groupStats.avgOrderValue.toFixed(2)}`, icon: <TrendingUp size={20} />, color: 'text-orange-600', bg: 'bg-orange-50 dark:bg-orange-900/20' },
+              { label: 'Total Customers', value: groupStats.totalCustomers.toLocaleString(), icon: <Users size={20} />, color: 'text-indigo-600', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+            ].map((s, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{s.label}</span>
+                  <div className={`${s.bg} ${s.color} p-2 rounded-lg`}>{s.icon}</div>
+                </div>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Store Performance Table */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Store Performance</h3>
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" placeholder="Search stores..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-9 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-sm w-64 focus:ring-2 focus:ring-blue-500 outline-none" />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-750">
+                  <tr>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Store</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Location</th>
+                    <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Orders</th>
+                    <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Revenue</th>
+                    <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Customers</th>
+                    <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                    <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {filteredStores.map((store: any) => {
+                    const orders = storeOrders[store.id] || [];
+                    const revenue = orders.reduce((sum: number, o: any) => sum + (parseFloat(o.total_amount) || 0), 0);
+                    const custCount = storeCustomers[store.id] || 0;
+                    const isActive = store.subscription_status === 'active' || store.subscription_status === 'trialing';
+                    return (
+                      <tr key={store.id} className="hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-gray-900 dark:text-white">{store.name}</div>
+                          <div className="text-xs text-gray-400">{store.subdomain}</div>
+                        </td>
+                        <td className="px-5 py-4 text-gray-600 dark:text-gray-300">{[store.town_city, store.postcode].filter(Boolean).join(', ') || '—'}</td>
+                        <td className="px-5 py-4 text-center font-semibold text-gray-900 dark:text-white">{orders.length}</td>
+                        <td className="px-5 py-4 text-center font-semibold text-green-600">£{revenue.toFixed(2)}</td>
+                        <td className="px-5 py-4 text-center text-gray-600 dark:text-gray-300">{custCount}</td>
+                        <td className="px-5 py-4 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                            {store.subscription_status?.toUpperCase() || 'UNKNOWN'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-center">
+                          <button onClick={() => handleOpenStore(store.subdomain)} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 transition-all shadow-sm flex items-center gap-1 mx-auto">
+                            <ExternalLink size={12} /> Open
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredStores.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-12 text-gray-400">
+                      {childTenants.length === 0 ? 'No stores linked to this group yet. Add stores via Master Admin.' : 'No stores match your search.'}
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Report Download */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Download Reports</h3>
+              <div className="flex items-center gap-3">
+                <select id="groupReportBranch" className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white dark:bg-gray-700 font-bold">
+                  <option value="all">All Branches</option>
+                  {childTenants.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <button onClick={() => {
+                  const branchId = (document.getElementById('groupReportBranch') as HTMLSelectElement)?.value;
+                  const allOrders = branchId === 'all' ? Object.values(storeOrders).flat() : (storeOrders[branchId] || []);
+                  const storeName = branchId === 'all' ? 'All Branches' : childTenants.find((t: any) => t.id === branchId)?.name || 'Unknown';
+                  const csv = [
+                    ['Store', 'Order Date', 'Amount', 'Status', 'Payment Method'].join(','),
+                    ...allOrders.map((o: any) => {
+                      const store = childTenants.find((t: any) => t.id === o.tenant_id)?.name || '';
+                      return [store, new Date(o.created_at).toLocaleDateString(), o.total_amount || 0, o.status, o.payment_method || ''].join(',');
+                    })
+                  ].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `group-report-${storeName.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click(); URL.revokeObjectURL(url);
+                }} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-blue-700 transition flex items-center gap-2">
+                  <Download size={16} /> Export CSV
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Order Status Breakdown */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-5">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Order Status Breakdown (All Stores)</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+              {(() => {
+                const allOrders = Object.values(storeOrders).flat();
+                const statuses = ['pending', 'cleaning', 'ready', 'collected', 'delivered', 'completed', 'failed'];
+                const colors: Record<string, string> = { pending: 'bg-yellow-100 text-yellow-700', cleaning: 'bg-blue-100 text-blue-700', ready: 'bg-purple-100 text-purple-700', collected: 'bg-indigo-100 text-indigo-700', delivered: 'bg-teal-100 text-teal-700', completed: 'bg-green-100 text-green-700', failed: 'bg-red-100 text-red-700' };
+                return statuses.map(s => {
+                  const count = allOrders.filter((o: any) => o.status?.toLowerCase() === s).length;
+                  return (
+                    <div key={s} className={`${colors[s] || 'bg-gray-100 text-gray-700'} rounded-xl p-4 text-center`}>
+                      <p className="text-2xl font-bold">{count}</p>
+                      <p className="text-xs font-semibold uppercase mt-1">{s}</p>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const BackOfficePage: React.FC<{
   tenant: any;
   availableSlots: TimeSlot[];
@@ -1945,11 +2228,16 @@ const BackOfficePage: React.FC<{
   onTenantUpdate?: (tenant: any) => void;
   companySettings: any;
 }> = ({ tenant, availableSlots, setAvailableSlots, deliveryOptions, setDeliveryOptions, onLogout, darkMode, toggleDark, onTenantUpdate, companySettings }) => {
-  const [activeTab, setActiveTab] = useState<'reports' | 'store' | 'service' | 'orders' | 'customers' | 'corporate' | 'subscriptions' | 'offers' | 'schedule' | 'marketing' | 'drivers' | 'billing' | 'invoices'>('orders');
+  const [activeTab, setActiveTab] = useState<'reports' | 'store' | 'service' | 'orders' | 'customers' | 'corporate' | 'subscriptions' | 'offers' | 'schedule' | 'marketing' | 'drivers' | 'billing' | 'invoices' | 'group'>('orders');
   const [showHelpGuide, setShowHelpGuide] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveToast, setSaveToast] = useState<string | null>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+  const [orderDateFilter, setOrderDateFilter] = useState<string>('all');
+  const [orderDateFrom, setOrderDateFrom] = useState('');
+  const [orderDateTo, setOrderDateTo] = useState('');
   const [drivers, setDrivers] = useState<any[]>([]);
   const [shipdayCarriers, setShipdayCarriers] = useState<any[]>([]);
   const [driverForm, setDriverForm] = useState({ name: '', email: '', phone: '', vehicle_reg: '', password_hash: '', working_days: [] as string[] });
@@ -1958,6 +2246,9 @@ const BackOfficePage: React.FC<{
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [availableServices, setAvailableServices] = useState<any[]>([]);
   const [repairCharge, setRepairCharge] = useState(0);
+  const [overrideCollectionSlot, setOverrideCollectionSlot] = useState('');
+  const [overrideDeliverySlot, setOverrideDeliverySlot] = useState('');
+  const [editOrderCategoryFilter, setEditOrderCategoryFilter] = useState('');
   const [isConnectingStripe, setIsConnectingStripe] = useState(false);
 
   // Print Tags & QR Scanner
@@ -2021,8 +2312,16 @@ const BackOfficePage: React.FC<{
     setFancyAlert({ show: true, type, title, message });
   };
 
+  // Marketing Guru popup
+  const [showMarketingGuru, setShowMarketingGuru] = useState(false);
+
   // Surcharge Modal for Edit Order
   const [showSurchargeModal, setShowSurchargeModal] = useState(false);
+  const [showPhoneOrderModal, setShowPhoneOrderModal] = useState(false);
+  const [phoneOrderSuccess, setPhoneOrderSuccess] = useState<{ id: string; emailed: boolean } | null>(null);
+  const [invoiceFilter, setInvoiceFilter] = useState({ name: '', phone: '', account: '', dateFrom: '', dateTo: '', status: 'all' as 'all' | 'paid' | 'unpaid' });
+  const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
+  const [phoneOrder, setPhoneOrder] = useState({ customer_name: '', customer_phone: '', customer_email: '', customer_address: '', notes: '', items: [] as {name: string; quantity: number; unit_price: number}[], collection_date: '', collection_slot: '', delivery_date: '', delivery_slot: '', override_schedule: false });
   const [surchargeDescription, setSurchargeDescription] = useState('');
   const [surchargeAmount, setSurchargeAmount] = useState('');
 
@@ -2588,6 +2887,9 @@ const BackOfficePage: React.FC<{
     } catch (e) {
       setOrderItems([]);
     }
+    setOverrideCollectionSlot(order.collection_slot_label || '');
+    setOverrideDeliverySlot(order.delivery_slot || '');
+    setEditOrderCategoryFilter('');
     setIsEditOrderOpen(true);
   };
 
@@ -2630,10 +2932,17 @@ const BackOfficePage: React.FC<{
         await supabase.from('cp_order_items').insert(itemRows);
       }
 
-      // Update order total
-      const { error } = await supabase.from('cp_orders').update({
-        total_amount: newTotal
-      }).eq('id', editingOrder.id);
+      // Update order total + slot overrides
+      const orderUpdate: any = { total_amount: newTotal };
+      if (overrideCollectionSlot !== (editingOrder.collection_slot_label || '')) {
+        orderUpdate.collection_slot_label = overrideCollectionSlot;
+        orderUpdate.delivery_override_at = new Date().toISOString();
+      }
+      if (overrideDeliverySlot !== (editingOrder.delivery_slot || '')) {
+        orderUpdate.delivery_slot = overrideDeliverySlot;
+        orderUpdate.delivery_override_at = new Date().toISOString();
+      }
+      const { error } = await supabase.from('cp_orders').update(orderUpdate).eq('id', editingOrder.id);
 
       if (error) {
         showFancyAlert('error', 'Update Failed', 'Failed to update order: ' + error.message);
@@ -2712,7 +3021,7 @@ const BackOfficePage: React.FC<{
   const [isAddingService, setIsAddingService] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'service' | 'category' | 'all'; id?: string; name?: string } | null>(null);
   const [corporateAccounts, setCorporateAccounts] = useState<any[]>([]);
-  const [newCorporate, setNewCorporate] = useState({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30 });
+  const [newCorporate, setNewCorporate] = useState({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30, account_id: '' });
   const [editingCorporate, setEditingCorporate] = useState<any>(null);
 
   // Postcode Service Areas
@@ -2922,7 +3231,163 @@ const BackOfficePage: React.FC<{
     return () => clearInterval(interval);
   }, [settings.shipday_enabled, settings.shipday_api_key, orders.length]);
 
-  const fetchEmailTemplates = async () => { const { data } = await supabase.from('cp_email_templates').select('*').eq('tenant_id', tenant.id); if (data && data.length > 0) { setEmailTemplates(data); if (!selectedTemplateId) setSelectedTemplateId(data[0].id); } };
+  const fetchEmailTemplates = async () => {
+    const { data } = await supabase.from('cp_email_templates').select('*').eq('tenant_id', tenant.id);
+    if (data && data.length > 0) {
+      setEmailTemplates(data);
+      if (!selectedTemplateId) setSelectedTemplateId(data[0].id);
+    } else {
+      // Seed default marketing templates with beautiful HTML
+      const wrap = (accent: string, emoji: string, headline: string, content: string, cta?: string, ctaText?: string) =>
+        `<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">` +
+        `<div style="background:linear-gradient(135deg,${accent},${accent}dd);padding:40px 30px;text-align:center;">` +
+        `<div style="font-size:48px;margin-bottom:12px;">${emoji}</div>` +
+        `<h1 style="color:#ffffff;font-size:26px;font-weight:800;margin:0;letter-spacing:-0.5px;">${headline}</h1>` +
+        `</div>` +
+        `<div style="padding:30px;color:#374151;font-size:15px;line-height:1.7;">${content}` +
+        (cta ? `<div style="text-align:center;margin:30px 0 10px;"><a href="${cta}" style="display:inline-block;background:${accent};color:#ffffff;padding:14px 36px;border-radius:50px;font-weight:700;text-decoration:none;font-size:16px;box-shadow:0 4px 14px ${accent}44;">${ctaText || 'Book Now'}</a></div>` : '') +
+        `</div>` +
+        `<div style="background:#f9fafb;padding:20px 30px;text-align:center;border-top:1px solid #e5e7eb;">` +
+        `<p style="color:#9ca3af;font-size:12px;margin:0;">{{storeName}} | Powered by CleanPOS</p>` +
+        `</div></div>`;
+
+      const defaults = [
+        { name: 'Welcome New Customer', subject: 'Welcome to {{storeName}}! 🎉', body: wrap('#2563eb', '👋', 'Welcome to {{storeName}}!',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>We're absolutely thrilled to have you join us! As a special welcome gift, here's <strong>10% off</strong> your first order.</p>` +
+          `<div style="background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">` +
+          `<p style="color:#e0e7ff;font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Your Welcome Code</p>` +
+          `<p style="color:#ffffff;font-size:32px;font-weight:800;letter-spacing:4px;margin:0;">WELCOME10</p>` +
+          `</div>` +
+          `<p>We offer professional dry cleaning, laundry, and alterations with <strong>free collection & delivery</strong> to your door.</p>`,
+          '#', 'Book Your First Order'), type: 'marketing', variables: ['name', 'storeName'] },
+
+        { name: 'Order Ready for Collection', subject: 'Your order is ready! ✅ - {{storeName}}', body: wrap('#059669', '✅', 'Your Order is Ready!',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>Great news! Your order has been cleaned, pressed, and is ready for you.</p>` +
+          `<div style="background:#ecfdf5;border:2px solid #059669;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">` +
+          `<p style="color:#059669;font-size:14px;text-transform:uppercase;letter-spacing:2px;margin:0 0 4px;">Order Number</p>` +
+          `<p style="color:#065f46;font-size:28px;font-weight:800;margin:0;">#{{orderId}}</p>` +
+          `</div>` +
+          `<p>You can collect from our store during opening hours, or we can deliver it straight to your door.</p>` +
+          `<p>Thank you for choosing <strong>{{storeName}}</strong>!</p>`,
+          '#', 'Track Your Order'), type: 'transactional', variables: ['name', 'orderId', 'storeName'] },
+
+        { name: 'We Miss You!', subject: 'We miss you, {{name}}! 💙 Here\'s 15% off', body: wrap('#7c3aed', '💜', 'We Miss You, {{name}}!',
+          `<p style="font-size:17px;">It's been a while since your last visit and we'd love to see you again!</p>` +
+          `<p>To welcome you back, here's an exclusive <strong>15% off</strong> your next order.</p>` +
+          `<div style="background:linear-gradient(135deg,#7c3aed,#db2777);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">` +
+          `<p style="color:#ede9fe;font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Your Comeback Code</p>` +
+          `<p style="color:#ffffff;font-size:32px;font-weight:800;letter-spacing:4px;margin:0;">COMEBACK15</p>` +
+          `</div>` +
+          `<p>We'll pick up and deliver for <strong>free</strong> — just book your collection and we'll handle the rest.</p>`,
+          '#', 'Book Your Collection'), type: 'marketing', variables: ['name', 'storeName'] },
+
+        { name: 'Seasonal Promotion', subject: '🌸 Spring Clean Special - 20% Off Everything!', body: wrap('#db2777', '🌸', '20% Off Spring Clean!',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>Spring is here and it's time for a wardrobe refresh!</p>` +
+          `<table style="width:100%;border-collapse:collapse;margin:20px 0;">` +
+          `<tr><td style="padding:12px 16px;background:#fdf2f8;border-radius:8px 8px 0 0;border-bottom:1px solid #fbcfe8;"><span style="font-size:20px;">👔</span> <strong>20% off</strong> all dry cleaning</td></tr>` +
+          `<tr><td style="padding:12px 16px;background:#fdf2f8;border-bottom:1px solid #fbcfe8;"><span style="font-size:20px;">✨</span> <strong>Free</strong> stain treatment on all items</td></tr>` +
+          `<tr><td style="padding:12px 16px;background:#fdf2f8;border-radius:0 0 8px 8px;"><span style="font-size:20px;">🚗</span> <strong>Free</strong> collection & delivery as always</td></tr>` +
+          `</table>` +
+          `<div style="background:#fdf2f8;border:2px dashed #db2777;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">` +
+          `<p style="color:#db2777;font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Use Code</p>` +
+          `<p style="color:#9d174d;font-size:28px;font-weight:800;letter-spacing:3px;margin:0;">SPRING20</p>` +
+          `</div>` +
+          `<p style="text-align:center;color:#6b7280;font-size:13px;">Offer ends this month — don't miss out!</p>`,
+          '#', 'Shop Now'), type: 'marketing', variables: ['name', 'storeName'] },
+
+        { name: 'Loyalty Reward', subject: 'You\'ve earned a reward! 🎁 - {{storeName}}', body: wrap('#f59e0b', '🏆', 'You\'ve Earned a Reward!',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>Congratulations! You've been a fantastic customer and your loyalty has been rewarded.</p>` +
+          `<div style="background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:12px;padding:24px;text-align:center;margin:20px 0;">` +
+          `<p style="color:#fef3c7;font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px;">Your Points Balance</p>` +
+          `<p style="color:#ffffff;font-size:42px;font-weight:800;margin:0;">{{points}}</p>` +
+          `<p style="color:#fef3c7;font-size:14px;margin:4px 0 0;">loyalty points</p>` +
+          `</div>` +
+          `<p>Redeem your points on your next order for a discount. The more you clean, the more you save!</p>`,
+          '#', 'Redeem Points'), type: 'marketing', variables: ['name', 'points', 'storeName'] },
+
+        { name: 'Referral Programme', subject: 'Give £5, Get £5 - Share the Love! 💝', body: wrap('#059669', '🎁', 'Give £5, Get £5!',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>Love our service? Share it with friends and you <strong>both</strong> win!</p>` +
+          `<div style="display:flex;gap:12px;margin:20px 0;">` +
+          `<div style="flex:1;background:#ecfdf5;border-radius:12px;padding:20px;text-align:center;border:2px solid #059669;">` +
+          `<p style="font-size:28px;margin:0 0 8px;">🎉</p>` +
+          `<p style="color:#065f46;font-weight:800;font-size:20px;margin:0;">£5 Off</p>` +
+          `<p style="color:#059669;font-size:12px;margin:4px 0 0;">For your friend</p>` +
+          `</div>` +
+          `<div style="flex:1;background:#ecfdf5;border-radius:12px;padding:20px;text-align:center;border:2px solid #059669;">` +
+          `<p style="font-size:28px;margin:0 0 8px;">💰</p>` +
+          `<p style="color:#065f46;font-weight:800;font-size:20px;margin:0;">£5 Credit</p>` +
+          `<p style="color:#059669;font-size:12px;margin:4px 0 0;">For you</p>` +
+          `</div>` +
+          `</div>` +
+          `<p>Simply share your unique referral code or tell them to mention your name when booking. It's that easy!</p>`,
+          '#', 'Share Now'), type: 'marketing', variables: ['name', 'storeName'] },
+
+        { name: 'Feedback Request', subject: 'How did we do? ⭐ - {{storeName}}', body: wrap('#6366f1', '⭐', 'How Did We Do?',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>Thank you for your recent order with {{storeName}}. We'd love to hear how we did!</p>` +
+          `<div style="background:#eef2ff;border-radius:12px;padding:20px;text-align:center;margin:20px 0;">` +
+          `<p style="color:#4338ca;font-size:14px;margin:0 0 4px;">Order</p>` +
+          `<p style="color:#312e81;font-size:22px;font-weight:800;margin:0;">#{{orderId}}</p>` +
+          `</div>` +
+          `<table style="width:100%;border-collapse:collapse;margin:20px 0;">` +
+          `<tr><td style="padding:10px 16px;background:#f5f3ff;border-radius:8px 8px 0 0;border-bottom:1px solid #e0e7ff;">⭐ Was the quality good?</td></tr>` +
+          `<tr><td style="padding:10px 16px;background:#f5f3ff;border-bottom:1px solid #e0e7ff;">⭐ Was the delivery on time?</td></tr>` +
+          `<tr><td style="padding:10px 16px;background:#f5f3ff;border-radius:0 0 8px 8px;">⭐ Would you recommend us?</td></tr>` +
+          `</table>` +
+          `<p>Simply reply to this email with your thoughts. Your feedback helps us improve!</p>`,
+          '#', 'Leave Feedback'), type: 'transactional', variables: ['name', 'orderId', 'storeName'] },
+
+        { name: 'Weekly Special', subject: '🔥 This Week Only - Unmissable Deals!', body: wrap('#ef4444', '🔥', 'This Week\'s Hot Deals!',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>Check out these exclusive offers — available this week only!</p>` +
+          `<table style="width:100%;border-collapse:collapse;margin:20px 0;">` +
+          `<tr><td style="padding:14px 16px;background:linear-gradient(90deg,#fef2f2,#ffffff);border-left:4px solid #ef4444;border-radius:0;margin-bottom:8px;"><strong style="color:#ef4444;">2-FOR-1</strong> Suits — Two suits, one price!</td></tr>` +
+          `<tr><td style="height:8px;"></td></tr>` +
+          `<tr><td style="padding:14px 16px;background:linear-gradient(90deg,#fef2f2,#ffffff);border-left:4px solid #ef4444;"><strong style="color:#ef4444;">FREE</strong> Pressing on all shirts</td></tr>` +
+          `<tr><td style="height:8px;"></td></tr>` +
+          `<tr><td style="padding:14px 16px;background:linear-gradient(90deg,#fef2f2,#ffffff);border-left:4px solid #ef4444;"><strong style="color:#ef4444;">50% OFF</strong> Curtain cleaning</td></tr>` +
+          `</table>` +
+          `<p style="text-align:center;background:#fef2f2;padding:12px;border-radius:8px;color:#991b1b;font-weight:700;">⏰ Offer ends Sunday — don't wait!</p>`,
+          '#', 'Book This Week\'s Special'), type: 'marketing', variables: ['name', 'storeName'] },
+
+        { name: 'Corporate Welcome', subject: 'Welcome to our Corporate Programme 🏢', body: wrap('#1e40af', '🏢', 'Corporate Programme Active!',
+          `<p style="font-size:17px;">Dear <strong>{{name}}</strong>,</p>` +
+          `<p>Welcome to {{storeName}}'s Corporate Programme! Your account is now active.</p>` +
+          `<table style="width:100%;border-collapse:collapse;margin:20px 0;">` +
+          `<tr><td style="padding:14px 16px;background:#eff6ff;border-radius:8px 8px 0 0;border-bottom:1px solid #bfdbfe;"><span style="color:#1e40af;font-weight:700;">✅ Priority</span> collection & delivery</td></tr>` +
+          `<tr><td style="padding:14px 16px;background:#eff6ff;border-bottom:1px solid #bfdbfe;"><span style="color:#1e40af;font-weight:700;">✅ Dedicated</span> account manager</td></tr>` +
+          `<tr><td style="padding:14px 16px;background:#eff6ff;border-bottom:1px solid #bfdbfe;"><span style="color:#1e40af;font-weight:700;">✅ Monthly</span> invoicing — no upfront payment</td></tr>` +
+          `<tr><td style="padding:14px 16px;background:#eff6ff;border-radius:0 0 8px 8px;"><span style="color:#1e40af;font-weight:700;">✅ Volume</span> discounts on all services</td></tr>` +
+          `</table>` +
+          `<p>Simply book online or call us to arrange your first collection. We look forward to a great partnership!</p>`,
+          '#', 'Book First Collection'), type: 'marketing', variables: ['name', 'storeName'] },
+
+        { name: 'Holiday Closure Notice', subject: '🎄 Holiday Hours - {{storeName}}', body: wrap('#0f766e', '🎄', 'Holiday Schedule',
+          `<p style="font-size:17px;">Hi <strong>{{name}}</strong>,</p>` +
+          `<p>Just a quick heads-up about our holiday schedule at {{storeName}}.</p>` +
+          `<div style="background:#f0fdfa;border:2px solid #0f766e;border-radius:12px;padding:24px;margin:20px 0;">` +
+          `<table style="width:100%;border-collapse:collapse;">` +
+          `<tr><td style="padding:8px 0;color:#0f766e;font-weight:700;">🔴 Closing:</td><td style="padding:8px 0;font-weight:700;">[DATE]</td></tr>` +
+          `<tr><td style="padding:8px 0;color:#0f766e;font-weight:700;">🟢 Reopening:</td><td style="padding:8px 0;font-weight:700;">[DATE]</td></tr>` +
+          `</table>` +
+          `</div>` +
+          `<p>Please place any orders before <strong>[DATE]</strong> to ensure they're ready in time.</p>` +
+          `<p>We wish you a wonderful holiday season! 🎉</p>`,
+          '#', 'Book Before We Close'), type: 'marketing', variables: ['name', 'storeName'] },
+      ];
+      const rows = defaults.map(t => ({ ...t, tenant_id: tenant.id, id: crypto.randomUUID() }));
+      const { error } = await supabase.from('cp_email_templates').insert(rows);
+      if (!error) {
+        setEmailTemplates(rows as any);
+        setSelectedTemplateId(rows[0].id);
+      }
+    }
+  };
   const fetchPromotions = async () => { const { data } = await supabase.from('cp_promotions').select('*').eq('tenant_id', tenant.id); if (data) setPromotions(data); };
   const fetchCustomers = async () => { const { data } = await supabase.from('cp_customers').select('*').eq('tenant_id', tenant.id).order('created_at', { ascending: false }); if (data) setCustomers(data); };
   const fetchInvoices = async () => { const { data } = await supabase.from('cp_invoices').select('*, cp_customers(name, email)').eq('tenant_id', tenant.id).order('created_at', { ascending: false }); if (data) setInvoices(data); };
@@ -3447,7 +3912,9 @@ const BackOfficePage: React.FC<{
     } else {
       setSettings(toSave);
       setSaved(true);
+      setSaveToast('Settings saved successfully!');
       setTimeout(() => setSaved(false), 3000);
+      setTimeout(() => setSaveToast(null), 3500);
     }
   };
 
@@ -3476,7 +3943,8 @@ const BackOfficePage: React.FC<{
       seo_description: tenantForm.seo_description,
       seo_keywords: tenantForm.seo_keywords,
       social_facebook: tenantForm.social_facebook,
-      social_instagram: tenantForm.social_instagram
+      social_instagram: tenantForm.social_instagram,
+      social_linkedin: tenantForm.social_linkedin
     }).eq('id', tenant.id);
     setIsSavingPromo(false);
     if (!error) {
@@ -3692,7 +4160,28 @@ const BackOfficePage: React.FC<{
       .eq('id', collectionFailedOrderId);
 
     if (!error) {
-      alert('Collection marked as failed. The order has been flagged for follow-up.');
+      // Check if failed collection charge should apply
+      // Charge applies if customer didn't cancel before 12 noon on collection day
+      const failedChargeAmount = parseFloat(settings.failed_collection_charge || '0');
+      if (failedChargeAmount > 0 && collectionFailedReason !== 'Access issues' && collectionFailedReason !== 'Address not found') {
+        const order = orders.find(o => o.id === collectionFailedOrderId);
+        if (order) {
+          // Add failed collection charge as a surcharge item
+          await supabase.from('cp_order_items').insert([{
+            order_id: collectionFailedOrderId,
+            item_name: 'Failed Collection Charge',
+            quantity: 1,
+            unit_price: failedChargeAmount,
+            tenant_id: tenant.id
+          }]);
+          // Update order total
+          const newTotal = (parseFloat(order.total_amount) || 0) + failedChargeAmount;
+          await supabase.from('cp_orders').update({ total_amount: newTotal }).eq('id', collectionFailedOrderId);
+        }
+        alert(`Collection marked as failed. A £${failedChargeAmount.toFixed(2)} failed collection charge has been applied.`);
+      } else {
+        alert('Collection marked as failed. The order has been flagged for follow-up.');
+      }
       setShowCollectionFailedModal(false);
       setCollectionFailedOrderId(null);
       setCollectionFailedReason('');
@@ -3806,6 +4295,9 @@ const BackOfficePage: React.FC<{
           services.find(s => s.name === i.name)?.category?.toLowerCase().includes('dry cleaning'))
         );
       });
+    } else if (filter === 'corporate-only') {
+      const corpEmails = corporateAccounts.map((ca: any) => ca.email?.toLowerCase());
+      filtered = customers.filter(c => corpEmails.includes(c.email?.toLowerCase()));
     }
     setMarketingSegment(filtered);
   };
@@ -3823,7 +4315,8 @@ const BackOfficePage: React.FC<{
       senderName: tenant?.name
     });
     if (result.success) {
-      alert("Test email sent successfully!");
+      setShowMarketingGuru(true);
+      setTimeout(() => setShowMarketingGuru(false), 9000);
     } else {
       alert("Failed to send test email. Check console for details.");
     }
@@ -4145,19 +4638,23 @@ const BackOfficePage: React.FC<{
           </button>
         </div>
       </div>
-      <div className="flex space-x-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg mb-8 inline-flex flex-wrap gap-y-2">
-        <button onClick={() => setActiveTab('orders')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'orders' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><ShoppingBag size={16} /> Orders</button>
-        <button onClick={() => setActiveTab('store')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'store' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Settings size={16} /> Store Details</button>
-        <button onClick={() => setActiveTab('customers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'customers' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Users size={16} /> Customers</button>
-        <button onClick={() => setActiveTab('corporate')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'corporate' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Building2 size={16} /> Corporate</button>
-        <button onClick={() => setActiveTab('subscriptions')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'subscriptions' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Repeat size={16} /> Subscriptions</button>
-        <button onClick={() => setActiveTab('offers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'offers' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Tag size={16} /> Offers & Loyalty</button>
-        <button onClick={() => setActiveTab('schedule')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'schedule' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Clock size={16} /> Schedule</button>
-        <button onClick={() => setActiveTab('service')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'service' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Shirt size={16} /> Services</button>
-        <button onClick={() => setActiveTab('marketing')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'marketing' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Mail size={16} /> Marketing</button>
-        <button onClick={() => setActiveTab('drivers')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'drivers' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><Truck size={16} /> Drivers</button>
-        <button onClick={() => setActiveTab('reports')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'reports' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><TrendingUp size={16} /> Reports</button>
-        <button onClick={() => setActiveTab('billing')} className={`px-4 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'billing' ? 'bg-white dark:bg-gray-700 text-trust-blue shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}><CreditCard size={16} /> Subscription & Billing</button>
+      <div className="flex space-x-1 bg-blue-50 dark:bg-gray-800 p-1.5 rounded-xl mb-8 inline-flex flex-wrap gap-y-2">
+        <button onClick={() => setActiveTab('orders')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'orders' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><ShoppingBag size={16} /> Orders</button>
+        <button onClick={() => setActiveTab('store')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'store' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Settings size={16} /> Store Details</button>
+        <button onClick={() => setActiveTab('customers')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'customers' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Users size={16} /> Customers</button>
+        <button onClick={() => setActiveTab('corporate')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'corporate' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Building2 size={16} /> Corporate</button>
+        <button onClick={() => setActiveTab('subscriptions')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'subscriptions' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Repeat size={16} /> Subscriptions</button>
+        <button onClick={() => setActiveTab('offers')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'offers' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Tag size={16} /> Offers & Loyalty</button>
+        <button onClick={() => setActiveTab('schedule')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'schedule' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Clock size={16} /> Schedule</button>
+        <button onClick={() => setActiveTab('service')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'service' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Shirt size={16} /> Services</button>
+        <button onClick={() => setActiveTab('marketing')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'marketing' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Mail size={16} /> Marketing</button>
+        <button onClick={() => setActiveTab('drivers')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'drivers' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Truck size={16} /> Drivers</button>
+        <button onClick={() => setActiveTab('reports')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'reports' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><TrendingUp size={16} /> Reports</button>
+        <button onClick={() => setActiveTab('invoices')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'invoices' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Receipt size={16} /> Invoices</button>
+        <button onClick={() => setActiveTab('billing')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'billing' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><CreditCard size={16} /> Subscription & Billing</button>
+        {tenant.is_franchise_parent && (
+          <button onClick={() => setActiveTab('group')} className={`px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${activeTab === 'group' ? 'bg-trust-blue text-white shadow-md shadow-blue-500/20' : 'text-blue-700 dark:text-gray-400 hover:bg-blue-100 dark:hover:bg-gray-700'}`}><Building2 size={16} /> Group Dashboard</button>
+        )}
       </div>
 
       {activeTab === 'store' && (
@@ -4280,6 +4777,17 @@ const BackOfficePage: React.FC<{
                     </div>
                   </div>
                 )}
+                {/* Hide Hero Text Toggle */}
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" checked={settings.hide_hero_text === 'true'} onChange={e => setSettings(prev => ({ ...prev, hide_hero_text: e.target.checked ? 'true' : 'false' }))} className="w-5 h-5 rounded accent-trust-blue" />
+                    <div>
+                      <p className="font-bold text-sm text-gray-800 dark:text-gray-200">Hide "Welcome to {tenant.name}" text on homepage</p>
+                      <p className="text-xs text-gray-500">Text stays in page source for SEO but is hidden visually. Useful when your hero image already has branding/text.</p>
+                    </div>
+                  </label>
+                </div>
+
                 {/* Live Preview */}
                 {settings.hero_image && (
                   <div className="mt-4">
@@ -4296,6 +4804,163 @@ const BackOfficePage: React.FC<{
               </div>
 
               <div className="md:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Store Address</label><textarea rows={3} className="w-full border rounded p-2" value={settings.store_address || ''} onChange={e => setSettings({ ...settings, store_address: e.target.value })} /></div><div className="md:col-span-2"><label className="block text-sm font-bold text-gray-700 mb-1">Invoice Footer Text</label><textarea rows={2} className="w-full border rounded p-2" value={settings.invoice_footer || ''} onChange={e => setSettings({ ...settings, invoice_footer: e.target.value })} /></div></div>
+          </div>
+
+          {/* Minimum Order Value */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center gap-2"><CreditCard size={20} className="text-blue-600" /> Minimum Order Value</h3>
+              <button onClick={() => handleSaveSettings()} disabled={isSavingPromo} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 transition flex items-center gap-2">
+                {isSavingPromo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {saved ? 'Saved!' : 'Save'}
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">Set the minimum order value for online Stripe payments. Customers below this amount will see a warning and the pay button will be disabled.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Minimum Amount (£)</label>
+                <input type="number" min="0" step="0.50" value={settings.min_order_value || '15'} onChange={e => setSettings({ ...settings, min_order_value: e.target.value })} className="w-full border rounded-lg px-3 py-2" placeholder="15.00" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Check Minimum Against</label>
+                <div className="flex gap-3">
+                  <button onClick={() => setSettings({ ...settings, min_order_check: 'before_discounts' })} className={`flex-1 py-2.5 rounded-lg font-bold text-sm border-2 transition-all ${(!settings.min_order_check || settings.min_order_check === 'before_discounts') ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-400'}`}>Before Discounts</button>
+                  <button onClick={() => setSettings({ ...settings, min_order_check: 'after_discounts' })} className={`flex-1 py-2.5 rounded-lg font-bold text-sm border-2 transition-all ${settings.min_order_check === 'after_discounts' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-200 text-gray-400'}`}>After Discounts</button>
+                </div>
+                <p className="text-xs text-gray-400 mt-2">{(!settings.min_order_check || settings.min_order_check === 'before_discounts') ? 'Minimum checked on subtotal before vouchers/discounts are applied.' : 'Minimum checked on final total after all vouchers/discounts are applied.'}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Special Delivery Runs */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 className="font-bold text-lg flex items-center gap-2 mb-4"><Truck size={20} className="text-purple-600" /> Special Delivery Runs</h3>
+            <p className="text-xs text-gray-500 mb-3">Define named delivery runs (e.g. "North Route Mon", "City Centre PM"). Staff can assign orders to these runs for batch dispatch.</p>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Run Names (comma-separated)</label>
+              <input type="text" value={settings.special_runs || ''} onChange={e => setSettings({...settings, special_runs: e.target.value})} className="w-full border rounded-lg px-3 py-2 text-sm" placeholder="North Route Mon, South Route Tue, City Centre PM, Express Same Day" />
+            </div>
+            <button onClick={() => handleSaveSettings()} disabled={isSavingPromo} className="mt-3 bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 transition flex items-center gap-2">
+              {isSavingPromo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
+            </button>
+          </div>
+
+          {/* IP Network Printer */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 className="font-bold text-lg flex items-center gap-2 mb-4"><Printer size={20} className="text-indigo-600" /> IP Network Printer</h3>
+            <p className="text-xs text-gray-500 mb-4">Configure an ethernet/network printer for receipt and label printing over IP. This works alongside USB printers in the Electron app.</p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Enable IP Printing</label>
+                <button onClick={() => setSettings({...settings, ip_printer_enabled: settings.ip_printer_enabled === 'true' ? 'false' : 'true'})} className={`w-full py-2.5 rounded-lg font-bold text-sm border-2 transition-all ${settings.ip_printer_enabled === 'true' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-400'}`}>
+                  {settings.ip_printer_enabled === 'true' ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Printer IP Address</label>
+                <input type="text" value={settings.ip_printer_address || ''} onChange={e => setSettings({...settings, ip_printer_address: e.target.value})} className="w-full border rounded-lg px-3 py-2 font-mono" placeholder="192.168.1.100" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Printer Port</label>
+                <input type="number" value={settings.ip_printer_port || '9100'} onChange={e => setSettings({...settings, ip_printer_port: e.target.value})} className="w-full border rounded-lg px-3 py-2 font-mono" placeholder="9100" />
+              </div>
+            </div>
+            <button onClick={() => handleSaveSettings()} disabled={isSavingPromo} className="mt-2 bg-indigo-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-indigo-700 transition flex items-center gap-2">
+              {isSavingPromo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
+            </button>
+          </div>
+
+          {/* Failed Collection Charge */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 className="font-bold text-lg flex items-center gap-2 mb-4"><AlertCircle size={20} className="text-red-600" /> Failed Collection Charge</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Charge Amount (£)</label>
+                <input type="number" min="0" step="0.50" value={settings.failed_collection_charge || '0'} onChange={e => setSettings({...settings, failed_collection_charge: e.target.value})} className="w-full border rounded-lg px-3 py-2" placeholder="5.00" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Cancellation Deadline</label>
+                <p className="text-sm text-gray-600 mt-2 font-medium">Must cancel before <strong>12:00 noon</strong> on collection day or charges apply.</p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">Set to £0 to disable. Charge is automatically added to the order when collection fails due to customer (not applied for "Access issues" or "Address not found").</p>
+            <button onClick={() => handleSaveSettings()} disabled={isSavingPromo} className="mt-3 bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700 transition flex items-center gap-2">
+              {isSavingPromo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
+            </button>
+          </div>
+
+          {/* Wash & Fold Per-Kilo Service */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 className="font-bold text-lg flex items-center gap-2 mb-4"><Droplet size={20} className="text-cyan-600" /> Wash &amp; Fold Service (Per Kilo)</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Enable Wash &amp; Fold</label>
+                <button onClick={() => setSettings({...settings, wash_fold_enabled: settings.wash_fold_enabled === 'true' ? 'false' : 'true'})} className={`w-full py-2.5 rounded-lg font-bold text-sm border-2 transition-all ${settings.wash_fold_enabled === 'true' ? 'border-cyan-500 bg-cyan-50 text-cyan-700' : 'border-gray-200 text-gray-400'}`}>
+                  {settings.wash_fold_enabled === 'true' ? 'Enabled' : 'Disabled'}
+                </button>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Price Per Kilo (£)</label>
+                <input type="number" min="0" step="0.50" value={settings.wash_fold_price_per_kg || '5'} onChange={e => setSettings({...settings, wash_fold_price_per_kg: e.target.value})} className="w-full border rounded-lg px-3 py-2" placeholder="5.00" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Minimum Weight (kg)</label>
+                <input type="number" min="0" step="0.5" value={settings.wash_fold_min_kg || '3'} onChange={e => setSettings({...settings, wash_fold_min_kg: e.target.value})} className="w-full border rounded-lg px-3 py-2" placeholder="3" />
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+              <strong>Customer Disclaimer:</strong> "If dry cleaning items are mixed in with your wash &amp; fold bag, they will be washed — not dry cleaned. Please separate your items before collection."
+            </div>
+            <button onClick={() => handleSaveSettings()} disabled={isSavingPromo} className="mt-4 bg-cyan-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-cyan-700 transition flex items-center gap-2">
+              {isSavingPromo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
+            </button>
+          </div>
+
+          {/* Upcharges Configuration */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="font-bold text-lg flex items-center gap-2"><Tag size={20} className="text-purple-600" /> Checkout Upcharges</h3>
+              <button onClick={() => handleSaveSettings()} disabled={isSavingPromo} className="bg-purple-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-purple-700 transition flex items-center gap-2">
+                {isSavingPromo ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {saved ? 'Saved!' : 'Save Upcharges'}
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">Add optional extras customers can tick at checkout (e.g., Small Repair, Express Service, Stain Treatment). These appear as checkboxes in the booking basket.</p>
+            <div className="space-y-3 mb-4">
+              {(() => {
+                let upcharges: any[] = [];
+                try { upcharges = JSON.parse(settings.upcharges || '[]'); } catch { upcharges = []; }
+                return upcharges.map((uc: any, idx: number) => (
+                  <div key={idx} className="flex items-center gap-3 bg-gray-50 rounded-lg p-3">
+                    <input type="text" value={uc.name} onChange={e => {
+                      const updated = [...upcharges];
+                      updated[idx].name = e.target.value;
+                      setSettings({ ...settings, upcharges: JSON.stringify(updated) });
+                    }} className="flex-1 border rounded px-3 py-2 text-sm font-medium" placeholder="Upcharge name" />
+                    <div className="flex items-center gap-1">
+                      <span className="text-gray-500 text-sm font-bold">£</span>
+                      <input type="number" min="0" step="0.01" value={uc.price} onChange={e => {
+                        const updated = [...upcharges];
+                        updated[idx].price = parseFloat(e.target.value) || 0;
+                        setSettings({ ...settings, upcharges: JSON.stringify(updated) });
+                      }} className="w-20 border rounded px-3 py-2 text-sm text-right" />
+                    </div>
+                    <button onClick={() => {
+                      const updated = upcharges.filter((_: any, i: number) => i !== idx);
+                      setSettings({ ...settings, upcharges: JSON.stringify(updated) });
+                    }} className="text-red-500 hover:text-red-700 p-1"><Trash2 size={16} /></button>
+                  </div>
+                ));
+              })()}
+            </div>
+            <button onClick={() => {
+              let upcharges: any[] = [];
+              try { upcharges = JSON.parse(settings.upcharges || '[]'); } catch { upcharges = []; }
+              upcharges.push({ name: '', price: 0 });
+              setSettings({ ...settings, upcharges: JSON.stringify(upcharges) });
+            }} className="flex items-center gap-2 text-purple-600 font-bold text-sm hover:text-purple-800">
+              <Plus size={16} /> Add Upcharge
+            </button>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -4349,6 +5014,10 @@ const BackOfficePage: React.FC<{
                 <div>
                   <label className="block text-xs font-bold text-gray-500 mb-1">Instagram URL</label>
                   <input type="text" className="w-full border rounded p-2 text-sm" value={tenantForm.social_instagram || ''} onChange={e => setTenantForm({ ...tenantForm, social_instagram: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 mb-1">LinkedIn URL</label>
+                  <input type="text" className="w-full border rounded p-2 text-sm" value={tenantForm.social_linkedin || ''} onChange={e => setTenantForm({ ...tenantForm, social_linkedin: e.target.value })} placeholder="https://linkedin.com/company/your-business" />
                 </div>
                 <div className="mt-4 p-3 bg-white border border-dashed rounded text-xs text-gray-500">
                   <Info size={14} className="inline mr-1 text-trust-blue" />
@@ -5113,9 +5782,42 @@ const BackOfficePage: React.FC<{
               <p className="text-xs text-gray-500">Current Orders in state: {orders.length}</p>
               {fetchError && <p className="text-xs text-red-500 font-bold">Error: {fetchError}</p>}
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center flex-wrap">
+              <select value={orderStatusFilter} onChange={(e) => setOrderStatusFilter(e.target.value)} className="text-xs border border-gray-300 rounded-full px-3 py-1.5 bg-white font-bold text-gray-700 focus:border-trust-blue outline-none cursor-pointer">
+                <option value="all">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="dispatched">Dispatched</option>
+                <option value="collecting">Collecting</option>
+                <option value="collection_failed">Collection Failed</option>
+                <option value="collected">Collected</option>
+                <option value="cleaning">Cleaning</option>
+                <option value="ready_for_delivery">Ready for Delivery</option>
+                <option value="out_for_delivery">Out for Delivery</option>
+                <option value="delivered">Delivered</option>
+                <option value="completed">Completed</option>
+              </select>
+              <select value={orderDateFilter} onChange={(e) => { setOrderDateFilter(e.target.value); if (e.target.value !== 'custom') { setOrderDateFrom(''); setOrderDateTo(''); } }} className="text-xs border border-gray-300 rounded-full px-3 py-1.5 bg-white font-bold text-gray-700 focus:border-trust-blue outline-none cursor-pointer">
+                <option value="all">All Dates</option>
+                <option value="1">Last 1 Day</option>
+                <option value="2">Last 2 Days</option>
+                <option value="3">Last 3 Days</option>
+                <option value="4">Last 4 Days</option>
+                <option value="5">Last 5 Days</option>
+                <option value="6">Last 6 Days</option>
+                <option value="7">Last 7 Days</option>
+                <option value="30">Last Month</option>
+                <option value="custom">Custom Range</option>
+              </select>
+              {orderDateFilter === 'custom' && (
+                <div className="flex gap-1 items-center">
+                  <input type="date" value={orderDateFrom} onChange={(e) => setOrderDateFrom(e.target.value)} className="text-xs border border-gray-300 rounded-full px-2 py-1 bg-white" />
+                  <span className="text-xs text-gray-400">to</span>
+                  <input type="date" value={orderDateTo} onChange={(e) => setOrderDateTo(e.target.value)} className="text-xs border border-gray-300 rounded-full px-2 py-1 bg-white" />
+                </div>
+              )}
               <button onClick={startQRScanner} className="text-xs text-pink-700 hover:text-pink-900 bg-pink-50 hover:bg-pink-100 border border-pink-200 px-3 py-1 rounded-full font-bold flex items-center gap-1"><Search size={12} /> Scan Tag</button>
               <button onClick={processRecurringOrders} className="text-xs text-purple-700 hover:text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-3 py-1 rounded-full font-bold flex items-center gap-1"><RefreshCw size={12} /> Process Recurring</button>
+              <button onClick={() => setShowPhoneOrderModal(true)} className="text-xs text-green-700 hover:text-green-900 bg-green-50 hover:bg-green-100 border border-green-200 px-3 py-1 rounded-full font-bold flex items-center gap-1"><Phone size={12} /> Phone Order</button>
               <button onClick={fetchOrders} className="text-xs text-trust-blue hover:underline bg-blue-50 px-3 py-1 rounded-full font-bold">Refresh Orders</button>
             </div>
           </div>
@@ -5123,7 +5825,22 @@ const BackOfficePage: React.FC<{
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-200"><tr><th className="px-4 py-3">Order #</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Prefs</th><th className="px-4 py-3">POS Ticket #</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Driver</th><th className="px-4 py-3">Actions</th></tr></thead>
               <tbody className="divide-y divide-gray-100">
-                {orders.map(order => (
+                {orders.filter(o => {
+                  if (orderStatusFilter !== 'all' && o.status !== orderStatusFilter) return false;
+                  if (orderDateFilter !== 'all') {
+                    const orderDate = new Date(o.created_at);
+                    if (orderDateFilter === 'custom') {
+                      if (orderDateFrom && orderDate < new Date(orderDateFrom)) return false;
+                      if (orderDateTo && orderDate > new Date(orderDateTo + 'T23:59:59')) return false;
+                    } else {
+                      const daysAgo = new Date();
+                      daysAgo.setDate(daysAgo.getDate() - parseInt(orderDateFilter));
+                      daysAgo.setHours(0, 0, 0, 0);
+                      if (orderDate < daysAgo) return false;
+                    }
+                  }
+                  return true;
+                }).map(order => (
                   <tr key={order.id} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-4 font-medium text-gray-900">#{order.readable_id}</td>
                     <td className="px-4 py-4"><div className="font-bold text-gray-800">{order.customer_name}</div><div className="text-xs text-gray-500">{order.customer_address}</div></td>
@@ -5151,58 +5868,83 @@ const BackOfficePage: React.FC<{
                                     order.status === 'dispatched' ? 'bg-blue-100 text-blue-700' :
                                       order.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
                                         'bg-gray-100 text-gray-700'
-                      }`}>{order.status.replace(/_/g, ' ')}</span></td>
-                    <td className="px-4 py-4"><select className="text-xs border border-gray-200 rounded p-1 bg-white focus:border-trust-blue outline-none" value={order.driver_id || ''} onChange={(e) => updateOrderDriver(order.id, e.target.value)}><option value="">-- Assign --</option>{drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}{shipdayCarriers.length > 0 && <option disabled>── Shipday Drivers ──</option>}{shipdayCarriers.map(c => (<option key={`shipday_${c.id}`} value={`shipday_${c.id}`}>{c.name} {c.isOnShift ? '🟢' : '⚫'}</option>))}</select></td>
+                      }`}>{order.status.replace(/_/g, ' ')}</span>{order.payment_method === 'on_account' && order.payment_status !== 'paid' ? <span className="ml-1 bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border border-orange-200">On Account</span> : order.payment_status === 'paid' ? <span className="ml-1 bg-green-100 text-green-700 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase border border-green-200">Paid</span> : null}</td>
                     <td className="px-4 py-4">
-                      <div className="flex gap-1.5 flex-wrap max-w-2xl">
+                      <select className="text-xs border border-gray-200 rounded p-1 bg-white focus:border-trust-blue outline-none mb-1 w-full" value={order.driver_id || ''} onChange={(e) => updateOrderDriver(order.id, e.target.value)}><option value="">-- Assign --</option>{drivers.map(d => (<option key={d.id} value={d.id}>{d.name}</option>))}{shipdayCarriers.length > 0 && <option disabled>── Shipday Drivers ──</option>}{shipdayCarriers.map(c => (<option key={`shipday_${c.id}`} value={`shipday_${c.id}`}>{c.name} {c.isOnShift ? '🟢' : '⚫'}</option>))}</select>
+                      <select className="text-[10px] border border-purple-200 rounded p-0.5 bg-purple-50 text-purple-700 w-full" value={order.special_run || ''} onChange={async (e) => { await supabase.from('cp_orders').update({ special_run: e.target.value || null }).eq('id', order.id); fetchOrders(); }}>
+                        <option value="">No Run</option>
+                        {(settings.special_runs || '').split(',').filter(Boolean).map((r: string) => <option key={r.trim()} value={r.trim()}>{r.trim()}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex gap-2 flex-wrap max-w-2xl">
                         {/* Dispatch for Collection */}
-                        <button onClick={() => updateOrderStatus(order.id, 'dispatched')} title="Dispatch for Collection" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'dispatched' ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Truck size={14} /><span className="text-[8px] font-bold mt-0.5">Dispatch</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'dispatched')} title="Dispatch for Collection" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'dispatched' ? 'bg-blue-500 text-white border-blue-600 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Truck size={18} /><span className="text-[10px] font-bold mt-0.5">Dispatch</span></button>
 
                         {/* Collecting */}
-                        <button onClick={() => updateOrderStatus(order.id, 'collecting')} title="Collecting" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collecting' ? 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Package size={14} /><span className="text-[8px] font-bold mt-0.5">Collect</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'collecting')} title="Collecting" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collecting' ? 'bg-blue-600 text-white border-blue-700 ring-2 ring-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50'}`}><Package size={18} /><span className="text-[10px] font-bold mt-0.5">Collect</span></button>
 
                         {/* Collection Failed */}
-                        <button onClick={() => openCollectionFailedModal(order.id)} title="Collection Failed - Customer/Order Not Ready" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collection_failed' ? 'bg-red-600 text-white border-red-700 ring-2 ring-red-200' : 'bg-white text-gray-600 border-gray-200 hover:border-red-400 hover:bg-red-50'}`}><XCircle size={14} /><span className="text-[8px] font-bold mt-0.5">Failed</span></button>
+                        <button onClick={() => openCollectionFailedModal(order.id)} title="Collection Failed - Customer/Order Not Ready" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collection_failed' ? 'bg-red-600 text-white border-red-700 ring-2 ring-red-200' : 'bg-white text-gray-600 border-gray-200 hover:border-red-400 hover:bg-red-50'}`}><XCircle size={18} /><span className="text-[10px] font-bold mt-0.5">Failed</span></button>
 
                         {/* Collected */}
-                        <button onClick={() => updateOrderStatus(order.id, 'collected')} title="Collected" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collected' ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'}`}><Check size={14} /><span className="text-[8px] font-bold mt-0.5">Collected</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'collected')} title="Collected" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'collected' ? 'bg-indigo-600 text-white border-indigo-700 ring-2 ring-indigo-200' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50'}`}><Check size={18} /><span className="text-[10px] font-bold mt-0.5">Collected</span></button>
 
                         {/* Cleaning */}
-                        <button onClick={() => updateOrderStatus(order.id, 'cleaning')} title="In Cleaning" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'cleaning' ? 'bg-purple-600 text-white border-purple-700 ring-2 ring-purple-200' : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50'}`}><Shirt size={14} /><span className="text-[8px] font-bold mt-0.5">Cleaning</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'cleaning')} title="In Cleaning" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'cleaning' ? 'bg-purple-600 text-white border-purple-700 ring-2 ring-purple-200' : 'bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50'}`}><Shirt size={18} /><span className="text-[10px] font-bold mt-0.5">Cleaning</span></button>
 
                         {/* Ready for Delivery */}
-                        <button onClick={() => updateOrderStatus(order.id, 'ready_for_delivery')} title="Ready for Delivery" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'ready_for_delivery' ? 'bg-orange-500 text-white border-orange-600 ring-2 ring-orange-200' : 'bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:bg-orange-50'}`}><PackageCheck size={14} /><span className="text-[8px] font-bold mt-0.5">Ready</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'ready_for_delivery')} title="Ready for Delivery" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'ready_for_delivery' ? 'bg-orange-500 text-white border-orange-600 ring-2 ring-orange-200' : 'bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:bg-orange-50'}`}><PackageCheck size={18} /><span className="text-[10px] font-bold mt-0.5">Ready</span></button>
 
                         {/* Out for Delivery */}
-                        <button onClick={() => updateOrderStatus(order.id, 'out_for_delivery')} title="Out for Delivery" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'out_for_delivery' ? 'bg-cyan-500 text-white border-cyan-600 ring-2 ring-cyan-200' : 'bg-white text-gray-600 border-gray-200 hover:border-cyan-400 hover:bg-cyan-50'}`}><Truck size={14} /><span className="text-[8px] font-bold mt-0.5">Deliver</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'out_for_delivery')} title="Out for Delivery" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'out_for_delivery' ? 'bg-cyan-500 text-white border-cyan-600 ring-2 ring-cyan-200' : 'bg-white text-gray-600 border-gray-200 hover:border-cyan-400 hover:bg-cyan-50'}`}><Truck size={18} /><span className="text-[10px] font-bold mt-0.5">Deliver</span></button>
 
                         {/* Delivered */}
-                        <button onClick={() => updateOrderStatus(order.id, 'delivered')} title="Delivered" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'delivered' ? 'bg-teal-600 text-white border-teal-700 ring-2 ring-teal-200' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:bg-teal-50'}`}><CheckCircle size={14} /><span className="text-[8px] font-bold mt-0.5">Delivered</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'delivered')} title="Delivered" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'delivered' ? 'bg-teal-600 text-white border-teal-700 ring-2 ring-teal-200' : 'bg-white text-gray-600 border-gray-200 hover:border-teal-400 hover:bg-teal-50'}`}><CheckCircle size={18} /><span className="text-[10px] font-bold mt-0.5">Delivered</span></button>
 
                         {/* Edit Order */}
-                        <button onClick={() => openEditOrder(order)} title="Edit Items / Add Repair" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:bg-orange-50"><Edit3 size={14} /><span className="text-[8px] font-bold mt-0.5">Edit</span></button>
+                        <button onClick={() => openEditOrder(order)} title="Edit Items / Add Repair" className="px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-orange-400 hover:bg-orange-50"><Edit3 size={18} /><span className="text-[10px] font-bold mt-0.5">Edit</span></button>
+
+                        {/* Email Extra Charges */}
+                        {order.payment_method === 'on_account' && order.payment_status !== 'paid' && order.total_amount > 0 && (
+                          <button onClick={async () => {
+                            if (!order.customer_email) { alert('No customer email on this order.'); return; }
+                            const items = Array.isArray(order.items) ? order.items : [];
+                            const itemList = items.map((i: any) => `${i.item_name || i.name} x${i.quantity} — £${((i.unit_price || i.price || 0) * (i.quantity || 1)).toFixed(2)}`).join('\n');
+                            const subject = `Payment Required — Order #${order.readable_id} — £${parseFloat(order.total_amount).toFixed(2)}`;
+                            const body = `Hi ${order.customer_name},\n\nYour order #${order.readable_id} has charges that require payment:\n\n${itemList}\n\nTotal: £${parseFloat(order.total_amount).toFixed(2)}\n\nPlease contact us to arrange payment.\n\nThank you,\n${tenant.name}`;
+                            try {
+                              await sendBrevoEmail({ toEmail: order.customer_email, toName: order.customer_name, subject, textContent: body, senderName: tenant?.name });
+                              await supabase.from('cp_orders').update({ payment_status: 'invoice_sent' }).eq('id', order.id);
+                              alert(`Payment request emailed to ${order.customer_email}`);
+                              fetchOrders();
+                            } catch (e: any) { alert('Failed to send email: ' + e.message); }
+                          }} title="Email extra charges for payment" className="px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:bg-blue-50">
+                            <Mail size={18} /><span className="text-[10px] font-bold mt-0.5">Invoice</span>
+                          </button>
+                        )}
 
                         {/* Completed */}
-                        <button onClick={() => updateOrderStatus(order.id, 'completed')} title="Mark as Completed" className={`px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'completed' ? 'bg-green-600 text-white border-green-700 ring-2 ring-green-200' : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:bg-green-50'}`}><CheckCircle2 size={14} /><span className="text-[8px] font-bold mt-0.5">Complete</span></button>
+                        <button onClick={() => updateOrderStatus(order.id, 'completed')} title="Mark as Completed" className={`px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all ${order.status === 'completed' ? 'bg-green-600 text-white border-green-700 ring-2 ring-green-200' : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:bg-green-50'}`}><CheckCircle2 size={18} /><span className="text-[10px] font-bold mt-0.5">Complete</span></button>
 
                         {/* Bag Tags */}
                         <button onClick={() => {
                           setPrintTagOrder(order);
                           setPrintTagCount(settings.default_tag_count || 1);
                           setShowPrintTagModal(true);
-                        }} title="Print Bag Tags" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-pink-400 hover:bg-pink-50"><ShoppingBag size={14} /><span className="text-[8px] font-bold mt-0.5">Bag Tags</span></button>
+                        }} title="Print Bag Tags" className="px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-pink-400 hover:bg-pink-50"><ShoppingBag size={18} /><span className="text-[10px] font-bold mt-0.5">Bag Tags</span></button>
 
                         {/* Garment Tags */}
-                        <button onClick={() => printDStubs(order, '76mm')} title="Print DStubs 76mm (standard)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">DStub 76</span></button>
+                        <button onClick={() => printDStubs(order, '76mm')} title="Print DStubs 76mm (standard)" className="px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-purple-400 hover:bg-purple-50"><Tag size={18} /><span className="text-[10px] font-bold mt-0.5">DStub 76</span></button>
 
                         {/* DStubs 40mm */}
-                        <button onClick={() => printDStubs(order, '40mm')} title="Print DStubs 40mm (narrow)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-violet-400 hover:bg-violet-50"><Tag size={14} /><span className="text-[8px] font-bold mt-0.5">DStub 40</span></button>
+                        <button onClick={() => printDStubs(order, '40mm')} title="Print DStubs 40mm (narrow)" className="px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-violet-400 hover:bg-violet-50"><Tag size={18} /><span className="text-[10px] font-bold mt-0.5">DStub 40</span></button>
 
                         {/* Print Receipt (Thermal) */}
-                        <button onClick={() => printOrderReceipts(order)} title="Print Receipt (Thermal)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-amber-400 hover:bg-amber-50"><Printer size={14} /><span className="text-[8px] font-bold mt-0.5">Receipt</span></button>
+                        <button onClick={() => printOrderReceipts(order)} title="Print Receipt (Thermal)" className="px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-white text-gray-600 border-gray-200 hover:border-amber-400 hover:bg-amber-50"><Printer size={18} /><span className="text-[10px] font-bold mt-0.5">Receipt</span></button>
 
                         {/* Print All (Receipt + Shop Copy + DStubs) */}
-                        <button onClick={() => printAll(order)} title="Print All (Receipt + Shop Copy + DStubs)" className="px-2.5 py-2 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-trust-blue text-white border-trust-blue hover:bg-blue-700"><Layers size={14} /><span className="text-[8px] font-bold mt-0.5">Print All</span></button>
+                        <button onClick={() => printAll(order)} title="Print All (Receipt + Shop Copy + DStubs)" className="px-3.5 py-2.5 flex flex-col items-center justify-center rounded-lg border shadow-sm transition-all bg-trust-blue text-white border-trust-blue hover:bg-blue-700"><Layers size={18} /><span className="text-[10px] font-bold mt-0.5">Print All</span></button>
                       </div>
                     </td>
                   </tr>
@@ -5280,7 +6022,17 @@ const BackOfficePage: React.FC<{
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-              <div className="md:col-span-2">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Account ID</label>
+                <input
+                  type="text"
+                  value={editingCorporate?.account_id || newCorporate.account_id}
+                  onChange={e => editingCorporate ? setEditingCorporate({...editingCorporate, account_id: e.target.value.toUpperCase()}) : setNewCorporate({...newCorporate, account_id: e.target.value.toUpperCase()})}
+                  className="w-full border rounded-lg p-2 text-sm dark:bg-gray-800 dark:border-gray-700 font-mono"
+                  placeholder="CORP-001"
+                />
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Billing Address</label>
                 <input
                   type="text"
@@ -5335,12 +6087,12 @@ const BackOfficePage: React.FC<{
                     const { data: inserted, error } = await supabase.from('cp_corporate_accounts').insert({ ...data, tenant_id: tenant.id }).select().single();
                     if (!error && inserted) {
                       setCorporateAccounts([...corporateAccounts, inserted]);
-                      setNewCorporate({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30 });
+                      setNewCorporate({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30, account_id: '' });
                     } else {
                       // If table doesn't exist, store locally
                       const newAccount = { id: Date.now().toString(), ...data, tenant_id: tenant.id, created_at: new Date().toISOString() };
                       setCorporateAccounts([...corporateAccounts, newAccount]);
-                      setNewCorporate({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30 });
+                      setNewCorporate({ company_name: '', contact_name: '', email: '', phone: '', address: '', discount_percent: 10, credit_limit: 1000, payment_terms: 30, account_id: '' });
                     }
                   }
                 }}
@@ -5692,6 +6444,20 @@ const BackOfficePage: React.FC<{
             <Calendar size={24} className="text-trust-blue" />
             <h2 className="text-2xl font-bold">Online Order Scheduling</h2>
           </div>
+
+          {/* Delivery Lead Time Setting */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 className="font-bold text-lg flex items-center gap-2 mb-3"><Timer size={20} className="text-orange-600" /> Delivery Lead Time</h3>
+            <p className="text-xs text-gray-500 mb-3">Minimum number of days between collection and delivery. E.g. set to 2 — if a customer books Monday collection, earliest delivery is Wednesday.</p>
+            <div className="flex items-center gap-3">
+              <input type="number" min="0" max="14" value={settings.delivery_lead_days || '2'} onChange={e => setSettings({...settings, delivery_lead_days: e.target.value})} className="w-24 border rounded-lg px-3 py-2 text-center font-bold" />
+              <span className="text-sm text-gray-600">days minimum between collection and delivery</span>
+              <button onClick={() => handleSaveSettings()} disabled={isSavingPromo} className="ml-auto bg-orange-600 text-white px-5 py-2 rounded-lg font-bold text-sm hover:bg-orange-700 transition flex items-center gap-2">
+                {isSavingPromo ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
+              </button>
+            </div>
+          </div>
+
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             {/* Collection/Delivery Tabs */}
             <div className="bg-gray-100 p-1 rounded-lg inline-flex mb-6 text-sm font-semibold text-gray-600">
@@ -6105,7 +6871,8 @@ const BackOfficePage: React.FC<{
                   { id: 'inactive', label: 'Inactive > 4 Weeks', icon: Clock },
                   { id: 'one-timer', label: '1-Timer Only', icon: User },
                   { id: 'laundry-only', label: 'Laundry Only', icon: Droplet },
-                  { id: 'dry-cleaning-only', label: 'Dry Clean Only', icon: Shirt }
+                  { id: 'dry-cleaning-only', label: 'Dry Clean Only', icon: Shirt },
+                  { id: 'corporate-only', label: 'Corporate Only', icon: Building2 }
                 ].map(f => (
                   <button
                     key={f.id}
@@ -6116,6 +6883,24 @@ const BackOfficePage: React.FC<{
                   </button>
                 ))}
               </div>
+              {/* Corporate Account ID Filter */}
+              {activeFilter === 'corporate-only' && corporateAccounts.length > 0 && (
+                <div className="flex items-center gap-2 mb-4">
+                  <label className="text-xs font-bold text-gray-500">Filter by Account ID:</label>
+                  <select onChange={e => {
+                    if (e.target.value === 'all') { applyMarketingFilter('corporate-only'); }
+                    else {
+                      const corp = corporateAccounts.find((ca: any) => ca.account_id === e.target.value || ca.id === e.target.value);
+                      if (corp) setMarketingSegment(customers.filter(c => c.email?.toLowerCase() === corp.email?.toLowerCase()));
+                    }
+                  }} className="border rounded-lg px-3 py-1.5 text-sm font-bold bg-white dark:bg-gray-800">
+                    <option value="all">All Corporate</option>
+                    {corporateAccounts.map((ca: any) => (
+                      <option key={ca.id} value={ca.account_id || ca.id}>{ca.account_id ? `${ca.account_id} — ` : ''}{ca.company_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex justify-between items-center">
                 <div>
                   <span className="text-blue-600 font-bold text-xl">{activeFilter === 'all' ? customers.length : marketingSegment.length}</span>
@@ -6804,7 +7589,7 @@ const BackOfficePage: React.FC<{
               <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-xl mb-4">
                 <div>
                   <p className="text-sm text-gray-500 font-bold uppercase">Current Plan</p>
-                  <p className="text-xl font-bold text-trust-blue">Professional SaaS Plan</p>
+                  <p className="text-xl font-bold text-trust-blue">Pay Per Order</p>
                 </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${tenant.subscription_status === 'active' ? (tenant.pass_expires_at ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700') : 'bg-orange-100 text-orange-700'
                   }`}>
@@ -6830,7 +7615,7 @@ const BackOfficePage: React.FC<{
                     <Clock className="text-trust-blue mt-1" size={20} />
                     <div>
                       <p className="font-bold text-trust-blue">Trial Ends in {Math.ceil((new Date(tenant.trial_ends_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24))} days</p>
-                      <p className="text-sm text-blue-800 dark:text-blue-300">Subscribe now to ensure uninterrupted service after your trial ends.</p>
+                      <p className="text-sm text-blue-800 dark:text-blue-300">Connect Stripe to activate pay-per-order billing before your trial ends.</p>
                     </div>
                   </div>
                 </div>
@@ -6838,21 +7623,33 @@ const BackOfficePage: React.FC<{
 
               <div className="space-y-4">
                 <div className="flex justify-between items-center text-sm font-bold p-2 border-b dark:border-gray-800">
-                  <span className="text-gray-500">Monthly Amount</span>
-                  <span>£65.00</span>
+                  <span className="text-gray-500">Billing Model</span>
+                  <span>Pay Per Order</span>
                 </div>
                 <div className="flex justify-between items-center text-sm font-bold p-2 border-b dark:border-gray-800">
-                  <span className="text-gray-500">Next Billing Date</span>
+                  <span className="text-gray-500">Rate</span>
+                  <span>£1.00 per order</span>
+                </div>
+                <div className="flex justify-between items-center text-sm font-bold p-2 border-b dark:border-gray-800">
+                  <span className="text-gray-500">Trial Ends</span>
                   <span>{new Date(tenant.trial_ends_at).toLocaleDateString()}</span>
                 </div>
               </div>
 
-              <button
-                onClick={() => window.open('https://buy.stripe.com/6oUcN4gDh50Rc2Y60agnK0P', '_blank')}
-                className="w-full mt-6 py-4 bg-trust-blue text-white rounded-xl font-bold hover:bg-trust-blue-hover transition shadow-lg flex items-center justify-center gap-2"
-              >
-                <ShieldCheck size={20} /> Upgrade to Professional
-              </button>
+              {!companySettings?.stripe_connect_account_id ? (
+                <div className="mt-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 text-sm text-blue-800 dark:text-blue-300">
+                  <p className="font-bold mb-1">&#8595; Activate Online Payments</p>
+                  <p className="text-xs">Connect your Stripe account in the section below to start accepting online payments. Without Stripe, orders will go through as &quot;On Account&quot; for manual billing.</p>
+                </div>
+              ) : (
+                <div className="mt-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 text-sm text-green-800 dark:text-green-300 flex items-center gap-2">
+                  <CheckCircle size={20} />
+                  <div>
+                    <p className="font-bold">Stripe Connected — Online Payments Active</p>
+                    <p className="text-xs">Customers will be charged online at checkout. No more manual billing needed.</p>
+                  </div>
+                </div>
+              )}
 
               <div className="mt-8 pt-8 border-t border-gray-100 dark:border-gray-800">
                 <h4 className="font-bold text-sm text-gray-700 dark:text-gray-300 mb-3">Redeem Partner Voucher</h4>
@@ -6909,55 +7706,8 @@ const BackOfficePage: React.FC<{
               </div>
             </div>
 
-            {/* Billing Type Selection */}
-            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 md:col-span-2">
-              <h3 className="font-bold text-lg mb-4">Choose Your Billing Model</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <button
-                  onClick={async () => {
-                    await supabase.from('tenants').update({ billing_type: 'subscription' }).eq('id', tenant.id);
-                    onTenantUpdate({ ...tenant, billing_type: 'subscription' });
-                  }}
-                  className={`p-6 rounded-xl border-2 text-left transition ${tenant?.billing_type !== 'per_transaction' ? 'border-trust-blue bg-trust-blue/5' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${tenant?.billing_type !== 'per_transaction' ? 'border-trust-blue' : 'border-gray-300'}`}>
-                      {tenant?.billing_type !== 'per_transaction' && <div className="w-2.5 h-2.5 rounded-full bg-trust-blue" />}
-                    </div>
-                    <span className="font-bold text-lg">Monthly Subscription</span>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Pay £65/month for unlimited orders</p>
-                  <ul className="text-xs text-gray-500 space-y-1">
-                    <li>✓ No per-transaction fees</li>
-                    <li>✓ Customers can pay in store or on delivery</li>
-                    <li>✓ Card payments optional</li>
-                  </ul>
-                </button>
-                <button
-                  onClick={async () => {
-                    await supabase.from('tenants').update({ billing_type: 'per_transaction' }).eq('id', tenant.id);
-                    onTenantUpdate({ ...tenant, billing_type: 'per_transaction' });
-                  }}
-                  className={`p-6 rounded-xl border-2 text-left transition ${tenant?.billing_type === 'per_transaction' ? 'border-trust-blue bg-trust-blue/5' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}
-                >
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${tenant?.billing_type === 'per_transaction' ? 'border-trust-blue' : 'border-gray-300'}`}>
-                      {tenant?.billing_type === 'per_transaction' && <div className="w-2.5 h-2.5 rounded-full bg-trust-blue" />}
-                    </div>
-                    <span className="font-bold text-lg">Pay Per Transaction</span>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">No monthly fee - pay only when you process orders</p>
-                  <ul className="text-xs text-gray-500 space-y-1">
-                    <li>✓ £1.20 per order (+ Stripe fees)</li>
-                    <li>✓ Customers must pay by card at checkout</li>
-                    <li>✓ Requires Stripe Connect setup below</li>
-                  </ul>
-                </button>
-              </div>
-            </div>
-
-            {/* Stripe Connect Section - Only show if per_transaction billing */}
-            {tenant?.billing_type === 'per_transaction' && (
+            {/* Stripe Connect Section */}
+            {(
             <div className="bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-6 md:col-span-2">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -6996,9 +7746,9 @@ const BackOfficePage: React.FC<{
                     <p className="font-mono text-sm">{companySettings.stripe_connect_account_id}</p>
                   </div>
                   <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700">
-                    <p className="text-xs font-bold text-gray-400 uppercase mb-1">Platform Fee</p>
-                    <p className="font-bold text-lg">£1.20 / order</p>
-                    <p className="text-xs text-gray-500">+ Stripe fees (1.4% + 20p)</p>
+                    <p className="text-xs font-bold text-gray-400 uppercase mb-1">Fees Per Order</p>
+                    <p className="font-bold text-lg">£1.00 + VAT (£1.20) per order</p>
+                    <p className="text-xs text-gray-500">+ 50p service fee charged to customer + Stripe processing fees</p>
                   </div>
                   <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 flex items-center justify-center">
                     <button className="text-sm font-bold text-trust-blue hover:underline">Stripe Dashboard ↗</button>
@@ -7833,15 +8583,174 @@ const BackOfficePage: React.FC<{
                 </div>
               </section>
 
+              {/* What's New */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Sparkles className="text-trust-blue" size={20} /> What&apos;s New — Recent Features
+                </h3>
+                <div className="grid md:grid-cols-2 gap-4 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="bg-cyan-50 dark:bg-cyan-900/20 p-4 rounded-xl border border-cyan-200 dark:border-cyan-800">
+                    <h4 className="font-bold text-cyan-700 dark:text-cyan-400 mb-2 flex items-center gap-1"><Droplet size={16} /> Wash &amp; Fold Per Kilo</h4>
+                    <p className="text-xs">Enable in Store Details → Wash &amp; Fold. Set price per kilo and minimum weight. Customers choose weight on booking with a disclaimer about mixed dry cleaning items.</p>
+                  </div>
+                  <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-xl border border-red-200 dark:border-red-800">
+                    <h4 className="font-bold text-red-700 dark:text-red-400 mb-2 flex items-center gap-1"><AlertCircle size={16} /> Failed Collection Charge</h4>
+                    <p className="text-xs">Set a charge amount in Store Details → Failed Collection Charge. Automatically applied when collection fails due to the customer (not "Access issues" or "Address not found"). Must cancel before 12 noon.</p>
+                  </div>
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-200 dark:border-green-800">
+                    <h4 className="font-bold text-green-700 dark:text-green-400 mb-2 flex items-center gap-1"><Phone size={16} /> Manual Phone Orders</h4>
+                    <p className="text-xs">Click the green <strong>Phone Order</strong> button in Orders. Add customer details, pick services, choose collection &amp; delivery dates from configured slots. Customer and store both emailed on save.</p>
+                  </div>
+                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
+                    <h4 className="font-bold text-blue-700 dark:text-blue-400 mb-2 flex items-center gap-1"><Repeat size={16} /> Repeat Previous Order</h4>
+                    <p className="text-xs">Signed-in customers see their last 3 completed orders in the basket area. One click re-adds all items to the cart — perfect for regulars.</p>
+                  </div>
+                  <div className="bg-purple-50 dark:bg-purple-900/20 p-4 rounded-xl border border-purple-200 dark:border-purple-800">
+                    <h4 className="font-bold text-purple-700 dark:text-purple-400 mb-2 flex items-center gap-1"><Truck size={16} /> Special Delivery Runs</h4>
+                    <p className="text-xs">Configure run names in Store Details (comma-separated). Assign orders to a run via the dropdown under the driver select. Great for batch dispatch by area.</p>
+                  </div>
+                  <div className="bg-indigo-50 dark:bg-indigo-900/20 p-4 rounded-xl border border-indigo-200 dark:border-indigo-800">
+                    <h4 className="font-bold text-indigo-700 dark:text-indigo-400 mb-2 flex items-center gap-1"><Printer size={16} /> IP Network Printer</h4>
+                    <p className="text-xs">Enable IP printing and enter printer address/port in Store Details. Use alongside USB thermal printers for network-connected receipt and label printers.</p>
+                  </div>
+                  <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl border border-orange-200 dark:border-orange-800">
+                    <h4 className="font-bold text-orange-700 dark:text-orange-400 mb-2 flex items-center gap-1"><Timer size={16} /> Delivery Lead Time</h4>
+                    <p className="text-xs">Set in Schedule tab. Minimum days between collection and delivery — e.g. 2 days means Monday collection, earliest Wednesday delivery. Applied to all bookings.</p>
+                  </div>
+                  <div className="bg-pink-50 dark:bg-pink-900/20 p-4 rounded-xl border border-pink-200 dark:border-pink-800">
+                    <h4 className="font-bold text-pink-700 dark:text-pink-400 mb-2 flex items-center gap-1"><Mail size={16} /> Invoice Payment Email</h4>
+                    <p className="text-xs">On unpaid &quot;On Account&quot; orders, click the <strong>Invoice</strong> button to email the customer a payment request. Order marked as invoice_sent until paid.</p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Invoices Tab */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Receipt className="text-trust-blue" size={20} /> Invoices Tab
+                </h3>
+                <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                  <p>The dedicated Invoices tab gives you full control over customer billing and payment tracking.</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-trust-blue mb-2">Filter &amp; Search</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Filter by customer name, phone, or corporate Account ID</li>
+                        <li>• Date range picker (from/to)</li>
+                        <li>• Status tabs: All, Unpaid, Paid</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-green-600 mb-2">Payment Management</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Click <strong>Mark Paid</strong> to toggle status manually</li>
+                        <li>• Stripe payments auto-mark invoices paid via webhook</li>
+                        <li>• Paid invoices show green "PAID" banner when viewed</li>
+                        <li>• Print or download any invoice</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Group Dashboard */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Building2 className="text-trust-blue" size={20} /> Group Dashboard (Franchise)
+                </h3>
+                <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                  <p>If your store is a franchise parent, you&apos;ll see a <strong>Group Dashboard</strong> tab for managing all child stores from one panel.</p>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-purple-600 mb-2">Aggregate Stats</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Total revenue across all stores</li>
+                        <li>• Combined order count</li>
+                        <li>• Active stores vs total stores</li>
+                        <li>• Average order value &amp; total customers</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-blue-600 mb-2">Store Switcher &amp; Exports</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Per-store performance table</li>
+                        <li>• Click <strong>Open</strong> to jump into any child store</li>
+                        <li>• Download CSV reports by branch or all branches</li>
+                        <li>• Order status breakdown across all stores</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Corporate Accounts */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Building2 className="text-trust-blue" size={20} /> Corporate Accounts
+                </h3>
+                <div className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-blue-600 mb-2">Setup</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Add company name, contact, email, phone</li>
+                        <li>• Set unique <strong>Account ID</strong> (e.g. CORP-001)</li>
+                        <li>• Custom discount %</li>
+                        <li>• Payment terms: Net 7/14/30/60</li>
+                      </ul>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                      <h4 className="font-bold text-purple-600 mb-2">Reporting &amp; Marketing</h4>
+                      <ul className="space-y-1 text-xs">
+                        <li>• Dedicated <strong>Corporate</strong> view in Reports</li>
+                        <li>• Per-account revenue and order stats</li>
+                        <li>• Marketing: filter by "Corporate Only" segment</li>
+                        <li>• Target specific account by Account ID</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Customer Pause Subscription */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <Pause className="text-trust-blue" size={20} /> Customer Self-Service
+                </h3>
+                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                  <ul className="space-y-1 text-xs">
+                    <li>• Customers can pause and resume subscriptions from their account portal</li>
+                    <li>• No phone call needed — instant toggle in Customer Portal</li>
+                    <li>• Store sees paused status in the Subscriptions tab</li>
+                    <li>• Recurring processing automatically skips paused customers</li>
+                  </ul>
+                </div>
+              </section>
+
+              {/* Hero Text Hide */}
+              <section>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
+                  <ImageIcon className="text-trust-blue" size={20} /> Hero Image &amp; Text
+                </h3>
+                <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-xl">
+                  <ul className="space-y-1 text-xs">
+                    <li>• Upload hero background image in Store Details</li>
+                    <li>• Adjust position and overlay darkness with live preview</li>
+                    <li>• <strong>Hide hero text</strong> option — hides &quot;Welcome to [Name]&quot; visually but keeps it in page source for SEO</li>
+                    <li>• Useful when your hero image already has your branding/text</li>
+                  </ul>
+                </div>
+              </section>
+
               {/* Support */}
               <section className="text-center py-6">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Need more help? Contact support at <span className="font-bold text-trust-blue">support@posso.co.uk</span></p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Need more help? Contact support at <span className="font-bold text-trust-blue">support@posso.co.uk</span> or call <span className="font-bold text-trust-blue">0808 175 3956</span></p>
               </section>
             </div>
 
             {/* Footer */}
             <div className="sticky bottom-0 bg-gray-50 dark:bg-gray-800 p-4 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
-              <p className="text-xs text-gray-500">CleanPOS v2.0 - User Guide</p>
+              <p className="text-xs text-gray-500">CleanPOS v2.1 - User Guide &bull; Updated with Priory Custom Features</p>
               <button
                 onClick={() => setShowHelpGuide(false)}
                 className="bg-trust-blue text-white px-6 py-2 rounded-xl font-bold hover:bg-trust-blue-hover transition"
@@ -7855,23 +8764,38 @@ const BackOfficePage: React.FC<{
 
       {/* Subscription Expiry Overlay */}
       {
-        tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date() && (
+        tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date() && tenant.subscription_status !== 'active' && !companySettings?.stripe_connect_account_id && (
           <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 text-center">
             <div className="bg-white dark:bg-gray-900 rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-trust-blue animate-fade-in shadow-trust-blue/20">
               <div className="w-20 h-20 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
                 <ShieldCheck size={40} className="text-trust-blue" />
               </div>
-              <h2 className="text-2xl font-bold mb-4 dark:text-white">Subscription Expired</h2>
-              <p className="text-gray-600 dark:text-gray-400 mb-8">
-                Your trial or monthly license has ended. To continue using CleanPOS and access your dashboard, please subscribe to a plan or enter your partner voucher code below.
+              <h2 className="text-2xl font-bold mb-4 dark:text-white">Trial Ended</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                Your free trial has ended. To continue using CleanPOS, activate Pay Per Order billing below — you only pay <span className="font-bold text-trust-blue">£1.00 per order</span> processed through the system.
               </p>
+              <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 mb-6 border border-blue-100 dark:border-blue-800">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle size={18} className="text-green-500" />
+                  <span className="font-bold text-sm text-gray-700 dark:text-gray-300">No monthly fees</span>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle size={18} className="text-green-500" />
+                  <span className="font-bold text-sm text-gray-700 dark:text-gray-300">Only £1.00 per order + Stripe fees</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={18} className="text-green-500" />
+                  <span className="font-bold text-sm text-gray-700 dark:text-gray-300">Cancel anytime — no contract</span>
+                </div>
+              </div>
 
               <div className="space-y-4">
                 <button
-                  onClick={() => window.open('https://buy.stripe.com/6oUcN4gDh50Rc2Y60agnK0P', '_blank')}
-                  className="w-full py-4 bg-trust-blue text-white rounded-xl font-bold hover:bg-trust-blue-hover transition shadow-lg flex items-center justify-center gap-2"
+                  onClick={handleConnectStripe}
+                  disabled={isConnectingStripe}
+                  className="w-full py-4 bg-trust-blue text-white rounded-xl font-bold hover:bg-trust-blue-hover transition shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  Subscribe Now (£65/mo)
+                  {isConnectingStripe ? 'Connecting...' : '🚀 Activate Pay Per Order'}
                 </button>
 
                 <div className="pt-6 border-t border-gray-100 dark:border-gray-800 text-left">
@@ -8419,6 +9343,215 @@ const BackOfficePage: React.FC<{
         </div>
       )}
 
+      {/* Group Dashboard Tab */}
+      {activeTab === 'group' && tenant.is_franchise_parent && (
+        <div className="animate-fade-in">
+          <GroupDashboardTab parentTenantId={tenant.id} parentTenant={tenant} />
+        </div>
+      )}
+
+      {/* Invoices Tab */}
+      {activeTab === 'invoices' && (
+        <div className="space-y-6 animate-fade-in">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold flex items-center gap-2"><Receipt size={22} className="text-trust-blue" /> Customer Invoices</h2>
+                <p className="text-xs text-gray-500">Total invoices: {invoices.length}</p>
+              </div>
+              <button onClick={fetchInvoices} className="text-xs text-trust-blue bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-full font-bold"><RefreshCw size={12} className="inline mr-1" /> Refresh</button>
+            </div>
+
+            {/* Filters */}
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-4">
+              <input type="text" placeholder="Customer name..." value={invoiceFilter.name} onChange={e => setInvoiceFilter({...invoiceFilter, name: e.target.value})} className="col-span-2 border rounded-lg px-3 py-2 text-sm" />
+              <input type="text" placeholder="Phone..." value={invoiceFilter.phone} onChange={e => setInvoiceFilter({...invoiceFilter, phone: e.target.value})} className="border rounded-lg px-3 py-2 text-sm" />
+              <input type="text" placeholder="Account ID..." value={invoiceFilter.account} onChange={e => setInvoiceFilter({...invoiceFilter, account: e.target.value})} className="border rounded-lg px-3 py-2 text-sm" />
+              <input type="date" value={invoiceFilter.dateFrom} onChange={e => setInvoiceFilter({...invoiceFilter, dateFrom: e.target.value})} className="border rounded-lg px-3 py-2 text-sm" />
+              <input type="date" value={invoiceFilter.dateTo} onChange={e => setInvoiceFilter({...invoiceFilter, dateTo: e.target.value})} className="border rounded-lg px-3 py-2 text-sm" />
+            </div>
+
+            {/* Status Tabs */}
+            <div className="flex gap-2 mb-4">
+              {(['all', 'unpaid', 'paid'] as const).map(s => (
+                <button key={s} onClick={() => setInvoiceFilter({...invoiceFilter, status: s})} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition ${invoiceFilter.status === s ? 'bg-trust-blue text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+                  {s.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            {/* Invoices Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Invoice #</th>
+                    <th className="px-4 py-3 text-left">Customer</th>
+                    <th className="px-4 py-3 text-left">Account</th>
+                    <th className="px-4 py-3 text-left">Date</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                    <th className="px-4 py-3 text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {invoices.filter(inv => {
+                    const customerOrder = orders.find(o => o.id === (inv as any).order_id);
+                    const custName = ((inv as any).cp_customers?.name || customerOrder?.customer_name || '').toLowerCase();
+                    const custPhone = customerOrder?.customer_phone || '';
+                    const custEmail = ((inv as any).cp_customers?.email || customerOrder?.customer_email || '').toLowerCase();
+                    const corpAcct = corporateAccounts.find((ca: any) => ca.email?.toLowerCase() === custEmail);
+                    const acctId = corpAcct?.account_id || '';
+                    if (invoiceFilter.name && !custName.includes(invoiceFilter.name.toLowerCase())) return false;
+                    if (invoiceFilter.phone && !custPhone.includes(invoiceFilter.phone)) return false;
+                    if (invoiceFilter.account && !acctId.toLowerCase().includes(invoiceFilter.account.toLowerCase())) return false;
+                    if (invoiceFilter.dateFrom && new Date((inv as any).created_at) < new Date(invoiceFilter.dateFrom)) return false;
+                    if (invoiceFilter.dateTo && new Date((inv as any).created_at) > new Date(invoiceFilter.dateTo + 'T23:59:59')) return false;
+                    if (invoiceFilter.status !== 'all' && (inv as any).status !== invoiceFilter.status) return false;
+                    return true;
+                  }).map((inv: any) => {
+                    const customerOrder = orders.find(o => o.id === inv.order_id);
+                    const custName = inv.cp_customers?.name || customerOrder?.customer_name || 'Unknown';
+                    const custEmail = inv.cp_customers?.email || customerOrder?.customer_email || '';
+                    const corpAcct = corporateAccounts.find((ca: any) => ca.email?.toLowerCase() === custEmail.toLowerCase());
+                    const isPaid = inv.status === 'paid';
+                    return (
+                      <tr key={inv.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 font-mono text-xs">#{customerOrder?.readable_id || inv.id.substring(0, 8)}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold">{custName}</div>
+                          <div className="text-xs text-gray-400">{custEmail}</div>
+                        </td>
+                        <td className="px-4 py-3 text-xs">{corpAcct ? <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold">{corpAcct.account_id || corpAcct.company_name}</span> : '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{new Date(inv.created_at).toLocaleDateString()}</td>
+                        <td className="px-4 py-3 text-right font-bold">£{parseFloat(inv.amount || 0).toFixed(2)}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${isPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            {isPaid ? 'PAID' : 'UNPAID'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex gap-2 justify-center">
+                            <button onClick={() => setSelectedInvoice(inv)} className="px-3 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-xs font-bold flex items-center gap-1"><FileText size={12} /> View</button>
+                            <button onClick={async () => {
+                              const newStatus = isPaid ? 'unpaid' : 'paid';
+                              await supabase.from('cp_invoices').update({ status: newStatus, paid_at: newStatus === 'paid' ? new Date().toISOString() : null }).eq('id', inv.id);
+                              if (customerOrder) {
+                                await supabase.from('cp_orders').update({ payment_status: newStatus }).eq('id', customerOrder.id);
+                              }
+                              fetchInvoices();
+                              fetchOrders();
+                            }} className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 ${isPaid ? 'bg-yellow-50 text-yellow-700 hover:bg-yellow-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
+                              {isPaid ? <><X size={12} /> Unmark</> : <><Check size={12} /> Mark Paid</>}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {invoices.length === 0 && <tr><td colSpan={7} className="text-center py-12 text-gray-400">No invoices found.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Detail Modal */}
+      {selectedInvoice && (() => {
+        const customerOrder = orders.find(o => o.id === selectedInvoice.order_id);
+        const custName = selectedInvoice.cp_customers?.name || customerOrder?.customer_name || 'Unknown';
+        const custEmail = selectedInvoice.cp_customers?.email || customerOrder?.customer_email || '';
+        const isPaid = selectedInvoice.status === 'paid';
+        const lineItems = Array.isArray(selectedInvoice.line_items) ? selectedInvoice.line_items : (Array.isArray(selectedInvoice.items) ? selectedInvoice.items : []);
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 print:bg-white print:p-0">
+            <div className="bg-white rounded-xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto relative print:shadow-none print:rounded-none print:max-h-none">
+              {/* PAID Banner */}
+              {isPaid && (
+                <div className="absolute top-8 right-8 rotate-12 z-20 pointer-events-none">
+                  <div className="border-8 border-green-600 text-green-600 font-black text-5xl px-6 py-3 rounded-lg" style={{ fontFamily: 'Impact, sans-serif', letterSpacing: '4px' }}>PAID</div>
+                </div>
+              )}
+              <div className="bg-gradient-to-r from-trust-blue to-blue-700 text-white p-6 flex justify-between items-center print:bg-gray-100 print:text-gray-900">
+                <div>
+                  <h3 className="text-xl font-bold">Invoice #{customerOrder?.readable_id || selectedInvoice.id.substring(0, 8)}</h3>
+                  <p className="text-blue-100 text-sm print:text-gray-600">{new Date(selectedInvoice.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+                </div>
+                <div className="flex gap-2 print:hidden">
+                  <button onClick={() => window.print()} className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1"><Printer size={14} /> Print</button>
+                  <button onClick={() => setSelectedInvoice(null)} className="text-white/80 hover:text-white"><X size={24} /></button>
+                </div>
+              </div>
+              <div className="p-6 space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Billed To</h4>
+                    <p className="font-bold text-lg">{custName}</p>
+                    <p className="text-sm text-gray-600">{custEmail}</p>
+                    {customerOrder?.customer_phone && <p className="text-sm text-gray-600">{customerOrder.customer_phone}</p>}
+                    {customerOrder?.customer_address && <p className="text-sm text-gray-600 mt-1">{customerOrder.customer_address}</p>}
+                  </div>
+                  <div className="text-right">
+                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">From</h4>
+                    <p className="font-bold text-lg">{tenant?.name}</p>
+                    {settings.store_address && <p className="text-sm text-gray-600 whitespace-pre-line">{settings.store_address}</p>}
+                    {tenant?.vat_number && <p className="text-xs text-gray-500 mt-1">VAT: {tenant.vat_number}</p>}
+                  </div>
+                </div>
+
+                <table className="w-full text-sm border-t border-b border-gray-200">
+                  <thead className="text-gray-500 font-medium">
+                    <tr className="border-b border-gray-200">
+                      <th className="py-3 text-left">Item</th>
+                      <th className="py-3 text-center">Qty</th>
+                      <th className="py-3 text-right">Unit Price</th>
+                      <th className="py-3 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineItems.map((item: any, idx: number) => (
+                      <tr key={idx} className="border-b border-gray-100">
+                        <td className="py-3">{item.item_name || item.name || 'Item'}</td>
+                        <td className="py-3 text-center">{item.quantity || 1}</td>
+                        <td className="py-3 text-right">£{parseFloat(item.unit_price || item.price || 0).toFixed(2)}</td>
+                        <td className="py-3 text-right font-semibold">£{(parseFloat(item.unit_price || item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="flex justify-end">
+                  <div className="w-64 space-y-2">
+                    <div className="flex justify-between text-lg font-bold border-t border-gray-300 pt-3">
+                      <span>Total:</span>
+                      <span className="text-trust-blue">£{parseFloat(selectedInvoice.amount || 0).toFixed(2)}</span>
+                    </div>
+                    {isPaid && selectedInvoice.paid_at && (
+                      <p className="text-xs text-green-600 text-right">Paid on {new Date(selectedInvoice.paid_at).toLocaleDateString()}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4 border-t border-gray-200 print:hidden">
+                  <button onClick={async () => {
+                    const newStatus = isPaid ? 'unpaid' : 'paid';
+                    await supabase.from('cp_invoices').update({ status: newStatus, paid_at: newStatus === 'paid' ? new Date().toISOString() : null }).eq('id', selectedInvoice.id);
+                    if (customerOrder) await supabase.from('cp_orders').update({ payment_status: newStatus }).eq('id', customerOrder.id);
+                    setSelectedInvoice({ ...selectedInvoice, status: newStatus, paid_at: newStatus === 'paid' ? new Date().toISOString() : null });
+                    fetchInvoices();
+                    fetchOrders();
+                  }} className={`flex-1 py-2.5 rounded-lg font-bold transition ${isPaid ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-green-600 text-white hover:bg-green-700'}`}>
+                    {isPaid ? 'Mark as Unpaid' : 'Mark as Paid'}
+                  </button>
+                  <button onClick={() => setSelectedInvoice(null)} className="flex-1 py-2.5 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Edit Order Modal */}
       {isEditOrderOpen && editingOrder && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -8440,6 +9573,38 @@ const BackOfficePage: React.FC<{
               <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
                 <p className="font-bold">{editingOrder.customer_name || 'Walk-in'}</p>
                 <p className="text-sm text-gray-500">{editingOrder.customer_phone}</p>
+              </div>
+
+              {/* Schedule Override */}
+              <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+                <label className="block text-sm font-bold text-blue-700 dark:text-blue-300 mb-3 flex items-center gap-2">
+                  <Calendar size={16} /> Schedule Override
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Collection Slot</label>
+                    <input
+                      type="text"
+                      value={overrideCollectionSlot}
+                      onChange={(e) => setOverrideCollectionSlot(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      placeholder="e.g. Monday 9:00-12:00"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Delivery Slot</label>
+                    <input
+                      type="text"
+                      value={overrideDeliverySlot}
+                      onChange={(e) => setOverrideDeliverySlot(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                      placeholder="e.g. Wednesday 14:00-17:00"
+                    />
+                  </div>
+                </div>
+                {editingOrder.delivery_override_at && (
+                  <p className="text-xs text-orange-600 mt-2">Previously overridden: {new Date(editingOrder.delivery_override_at).toLocaleString()}</p>
+                )}
               </div>
 
               {/* Order Items */}
@@ -8496,6 +9661,16 @@ const BackOfficePage: React.FC<{
                 <div>
                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Add Service</label>
                   <select
+                    value={editOrderCategoryFilter}
+                    onChange={(e) => setEditOrderCategoryFilter(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm mb-2"
+                  >
+                    <option value="">All Categories</option>
+                    {[...new Set(availableServices.map(s => s.category).filter(Boolean))].sort().map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <select
                     onChange={(e) => {
                       const service = availableServices.find(s => s.id === e.target.value);
                       if (service) {
@@ -8515,7 +9690,9 @@ const BackOfficePage: React.FC<{
                     defaultValue=""
                   >
                     <option value="">-- Select service --</option>
-                    {availableServices.map(s => (
+                    {availableServices
+                      .filter(s => !editOrderCategoryFilter || s.category === editOrderCategoryFilter)
+                      .map(s => (
                       <option key={s.id} value={s.id}>{s.name} - £{(s.price_numeric || 0).toFixed(2)}</option>
                     ))}
                   </select>
@@ -8783,6 +9960,430 @@ const BackOfficePage: React.FC<{
         </div>
       )}
 
+      {/* Phone Order Modal */}
+      {showPhoneOrderModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-gradient-to-r from-green-500 to-emerald-600 text-white p-6 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-bold flex items-center gap-2"><Phone size={22} /> New Phone Order</h3>
+                <p className="text-green-100 text-sm">Create an order on behalf of a customer</p>
+              </div>
+              <button onClick={() => setShowPhoneOrderModal(false)} className="text-white/80 hover:text-white"><X size={24} /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Customer Name *</label>
+                  <input type="text" value={phoneOrder.customer_name} onChange={e => setPhoneOrder({...phoneOrder, customer_name: e.target.value})} className="w-full border rounded-lg p-2.5 text-sm" placeholder="John Smith" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone *</label>
+                  <input type="tel" value={phoneOrder.customer_phone} onChange={e => setPhoneOrder({...phoneOrder, customer_phone: e.target.value})} className="w-full border rounded-lg p-2.5 text-sm" placeholder="07123 456789" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email</label>
+                  <input type="email" value={phoneOrder.customer_email} onChange={e => setPhoneOrder({...phoneOrder, customer_email: e.target.value})} className="w-full border rounded-lg p-2.5 text-sm" placeholder="john@email.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Address</label>
+                  <input type="text" value={phoneOrder.customer_address} onChange={e => setPhoneOrder({...phoneOrder, customer_address: e.target.value})} className="w-full border rounded-lg p-2.5 text-sm" placeholder="123 High St, LE1 1AA" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Notes</label>
+                <textarea value={phoneOrder.notes} onChange={e => setPhoneOrder({...phoneOrder, notes: e.target.value})} className="w-full border rounded-lg p-2.5 text-sm" rows={2} placeholder="Special instructions..." />
+              </div>
+
+              {/* Collection & Delivery Slots — Uses store-configured schedule */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="text-sm font-bold text-blue-900 mb-3 flex items-center gap-2"><Calendar size={16} /> Collection &amp; Delivery Schedule</h4>
+                {(() => {
+                  const leadDays = parseInt(settings.delivery_lead_days || '2');
+                  const collectionSlots = availableSlots.filter(s => s.type === 'collection' || !s.type);
+                  const deliverySlots = availableSlots.filter(s => s.type === 'delivery');
+                  const dayMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+                  // Next 14 days matching configured collection days
+                  const nextCollectionDates = (() => {
+                    const out: { date: string; label: string; dayName: string }[] = [];
+                    const today = new Date();
+                    for (let i = 0; i < 14; i++) {
+                      const d = new Date(today);
+                      d.setDate(today.getDate() + i);
+                      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+                      const matchingSlots = collectionSlots.filter(s => s.day === dayName);
+                      if (matchingSlots.length > 0) {
+                        out.push({ date: d.toISOString().split('T')[0], label: `${dayName} ${d.getDate()}/${d.getMonth() + 1}`, dayName });
+                      }
+                    }
+                    return out;
+                  })();
+                  // Available delivery dates based on collection_date + lead time
+                  const nextDeliveryDates = (() => {
+                    if (!phoneOrder.collection_date) return [];
+                    const out: { date: string; label: string; dayName: string }[] = [];
+                    const collectionDate = new Date(phoneOrder.collection_date);
+                    const earliestDelivery = new Date(collectionDate);
+                    earliestDelivery.setDate(earliestDelivery.getDate() + leadDays);
+                    for (let i = 0; i < 14; i++) {
+                      const d = new Date(earliestDelivery);
+                      d.setDate(earliestDelivery.getDate() + i);
+                      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+                      const matchingSlots = deliverySlots.filter(s => s.day === dayName);
+                      if (matchingSlots.length > 0) {
+                        out.push({ date: d.toISOString().split('T')[0], label: `${dayName} ${d.getDate()}/${d.getMonth() + 1}`, dayName });
+                      }
+                    }
+                    return out;
+                  })();
+                  const collectionDaySlots = phoneOrder.collection_date ? collectionSlots.filter(s => {
+                    const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(phoneOrder.collection_date).getDay()];
+                    return s.day === dayName;
+                  }) : [];
+                  const deliveryDaySlots = phoneOrder.delivery_date ? deliverySlots.filter(s => {
+                    const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(phoneOrder.delivery_date).getDay()];
+                    return s.day === dayName;
+                  }) : [];
+                  return (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 mb-3">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Collection Date</label>
+                          <select value={phoneOrder.collection_date} onChange={e => setPhoneOrder({...phoneOrder, collection_date: e.target.value, delivery_date: '', delivery_slot: '', collection_slot: ''})} className="w-full border rounded-lg p-2 text-sm">
+                            <option value="">-- Select day --</option>
+                            {nextCollectionDates.map(d => <option key={d.date} value={d.date}>{d.label}</option>)}
+                          </select>
+                          {nextCollectionDates.length === 0 && <p className="text-xs text-red-600 mt-1">No collection days configured. Set them in Schedule tab.</p>}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Collection Time Slot</label>
+                          <select value={phoneOrder.collection_slot} onChange={e => setPhoneOrder({...phoneOrder, collection_slot: e.target.value})} className="w-full border rounded-lg p-2 text-sm" disabled={!phoneOrder.collection_date}>
+                            <option value="">{phoneOrder.collection_date ? '-- Select slot --' : 'Pick date first'}</option>
+                            {collectionDaySlots.map((s, i) => <option key={i} value={s.label || s.day}>{s.label || s.day}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Delivery Date {phoneOrder.collection_date && <span className="text-orange-600">(+{leadDays} days min)</span>}</label>
+                          <select value={phoneOrder.delivery_date} onChange={e => setPhoneOrder({...phoneOrder, delivery_date: e.target.value, delivery_slot: ''})} className="w-full border rounded-lg p-2 text-sm" disabled={!phoneOrder.collection_date}>
+                            <option value="">{phoneOrder.collection_date ? '-- Select day --' : 'Pick collection first'}</option>
+                            {nextDeliveryDates.map(d => <option key={d.date} value={d.date}>{d.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Delivery Time Slot</label>
+                          <select value={phoneOrder.delivery_slot} onChange={e => setPhoneOrder({...phoneOrder, delivery_slot: e.target.value})} className="w-full border rounded-lg p-2 text-sm" disabled={!phoneOrder.delivery_date}>
+                            <option value="">{phoneOrder.delivery_date ? '-- Select slot --' : 'Pick date first'}</option>
+                            {deliveryDaySlots.map((s, i) => <option key={i} value={s.label || s.day}>{s.label || s.day}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-blue-700">Only configured collection days and eligible delivery days (after {leadDays}-day lead time) are shown.</p>
+                        {phoneOrder.collection_date && (
+                          <label className="flex items-center gap-2 text-xs text-gray-600">
+                            <input type="checkbox" checked={(phoneOrder as any).override_schedule || false} onChange={e => setPhoneOrder({...phoneOrder, override_schedule: e.target.checked} as any)} className="w-4 h-4" />
+                            Override (manual date)
+                          </label>
+                        )}
+                      </div>
+                      {(phoneOrder as any).override_schedule && (
+                        <div className="grid grid-cols-2 gap-4 mt-3 pt-3 border-t border-blue-200">
+                          <div>
+                            <label className="block text-xs font-bold text-orange-600 uppercase mb-1">Manual Collection Date</label>
+                            <input type="date" value={phoneOrder.collection_date} onChange={e => setPhoneOrder({...phoneOrder, collection_date: e.target.value})} className="w-full border border-orange-300 rounded-lg p-2 text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-orange-600 uppercase mb-1">Manual Delivery Date</label>
+                            <input type="date" value={phoneOrder.delivery_date} onChange={e => setPhoneOrder({...phoneOrder, delivery_date: e.target.value})} className="w-full border border-orange-300 rounded-lg p-2 text-sm" />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Add Items */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Order Items</label>
+                {phoneOrder.items.map((item, idx) => (
+                  <div key={idx} className="flex items-center gap-2 mb-2">
+                    <span className="flex-1 text-sm font-semibold">{item.name}</span>
+                    <span className="text-sm">x{item.quantity}</span>
+                    <span className="text-sm font-bold text-green-600">£{(item.unit_price * item.quantity).toFixed(2)}</span>
+                    <button onClick={() => setPhoneOrder({...phoneOrder, items: phoneOrder.items.filter((_, i) => i !== idx)})} className="text-red-400 hover:text-red-600"><X size={16} /></button>
+                  </div>
+                ))}
+                <select onChange={e => {
+                  const svc = services.find(s => s.id === e.target.value);
+                  if (svc) {
+                    setPhoneOrder({...phoneOrder, items: [...phoneOrder.items, { name: svc.name, quantity: 1, unit_price: svc.price_numeric || parseFloat(svc.price) || 0 }]});
+                    e.target.value = '';
+                  }
+                }} className="w-full border rounded-lg p-2 text-sm mt-2" defaultValue="">
+                  <option value="">+ Add service...</option>
+                  {services.map(s => <option key={s.id} value={s.id}>{s.name} — £{(s.price_numeric || 0).toFixed(2)}</option>)}
+                </select>
+              </div>
+
+              {/* Total */}
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 flex justify-between items-center">
+                <span className="font-bold">Total:</span>
+                <span className="text-2xl font-bold text-green-600">£{phoneOrder.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0).toFixed(2)}</span>
+              </div>
+
+              <div className="flex gap-3">
+                <button onClick={() => setShowPhoneOrderModal(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold hover:bg-gray-200 transition">Cancel</button>
+                <button onClick={async () => {
+                  if (!phoneOrder.customer_name || !phoneOrder.customer_phone || phoneOrder.items.length === 0) {
+                    alert('Please enter customer name, phone, and at least one item.');
+                    return;
+                  }
+                  const total = phoneOrder.items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
+                  const readableId = 'PH' + Math.random().toString(36).substring(2, 6).toUpperCase();
+                  const collectionLabel = [phoneOrder.collection_date, phoneOrder.collection_slot].filter(Boolean).join(' ');
+                  const deliveryLabel = [phoneOrder.delivery_date, phoneOrder.delivery_slot].filter(Boolean).join(' ');
+                  const { data: orderData, error: orderError } = await supabase.from('cp_orders').insert([{
+                    tenant_id: tenant.id, readable_id: readableId,
+                    customer_name: phoneOrder.customer_name, customer_phone: phoneOrder.customer_phone,
+                    customer_email: phoneOrder.customer_email || '', customer_address: phoneOrder.customer_address || '',
+                    total_amount: total, status: 'pending',
+                    payment_method: 'on_account', payment_status: 'unpaid',
+                    collection_slot_label: collectionLabel || null,
+                    delivery_slot: deliveryLabel || null,
+                    notes: `[PHONE ORDER] ${phoneOrder.notes}`.trim()
+                  }]).select().single();
+                  if (orderError) { alert('Error creating order: ' + orderError.message); return; }
+                  if (orderData) {
+                    const itemRows = phoneOrder.items.map(i => ({ order_id: orderData.id, item_name: i.name, quantity: i.quantity, unit_price: i.unit_price, tenant_id: tenant.id }));
+                    await supabase.from('cp_order_items').insert(itemRows);
+                    await supabase.from('cp_invoices').insert([{ order_id: orderData.id, tenant_id: tenant.id, amount: total, status: 'unpaid', line_items: phoneOrder.items }]);
+
+                    // Send order confirmation emails (to customer and store)
+                    const storeEmail = settings.store_email || '';
+                    const trackingUrl = `${window.location.origin}/?tenant=${tenant.subdomain}&order=${readableId}`;
+                    const emailCart = phoneOrder.items.map(i => ({ name: i.name, price: String(i.unit_price), quantity: i.quantity }));
+
+                    // Email to customer (if email provided)
+                    if (phoneOrder.customer_email) {
+                      try {
+                        await sendOrderConfirmation({
+                          name: phoneOrder.customer_name,
+                          email: phoneOrder.customer_email,
+                          orderId: readableId,
+                          items: emailCart as any,
+                          storeEmail: storeEmail,
+                          storeName: tenant.name,
+                          totalOverride: total.toFixed(2),
+                          slotLabel: collectionLabel ? `Collection: ${collectionLabel}${deliveryLabel ? ` • Delivery: ${deliveryLabel}` : ''}` : 'To be confirmed',
+                          trackingUrl: trackingUrl
+                        });
+                      } catch (e) { console.warn('[PhoneOrder] Customer email failed:', e); }
+                    }
+
+                    // Email to store
+                    if (storeEmail) {
+                      try {
+                        const itemList = phoneOrder.items.map(i => `${i.name} x${i.quantity} — £${(i.unit_price * i.quantity).toFixed(2)}`).join('\n');
+                        await sendBrevoEmail({
+                          toEmail: storeEmail,
+                          toName: tenant.name,
+                          subject: `[PHONE ORDER] New Order #${readableId} — £${total.toFixed(2)}`,
+                          textContent: `A new phone order has been created:\n\nOrder #${readableId}\n\nCustomer: ${phoneOrder.customer_name}\nPhone: ${phoneOrder.customer_phone}\nEmail: ${phoneOrder.customer_email || 'N/A'}\nAddress: ${phoneOrder.customer_address || 'N/A'}\n\nCollection: ${collectionLabel || 'To be confirmed'}\nDelivery: ${deliveryLabel || 'To be confirmed'}\n\nItems:\n${itemList}\n\nTotal: £${total.toFixed(2)}\nPayment: On Account\n\nNotes: ${phoneOrder.notes || 'None'}`,
+                          senderName: tenant.name
+                        });
+                      } catch (e) { console.warn('[PhoneOrder] Store email failed:', e); }
+                    }
+                  }
+                  setShowPhoneOrderModal(false);
+                  setPhoneOrder({ customer_name: '', customer_phone: '', customer_email: '', customer_address: '', notes: '', items: [], collection_date: '', collection_slot: '', delivery_date: '', delivery_slot: '', override_schedule: false });
+                  fetchOrders();
+                  setPhoneOrderSuccess({ id: readableId, emailed: !!phoneOrder.customer_email });
+                  setTimeout(() => setPhoneOrderSuccess(null), 6000);
+                }} className="flex-1 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition flex items-center justify-center gap-2">
+                  <Check size={18} /> Create Order
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fancy Save Toast — Animated Success */}
+      {saveToast && (
+        <div className="fixed top-6 right-6 z-[110] animate-slide-in-right">
+          <style>{`
+            @keyframes slide-in-right { 0% { transform: translateX(120%); opacity: 0; } 60% { transform: translateX(-10px); opacity: 1; } 100% { transform: translateX(0); opacity: 1; } }
+            @keyframes pulse-ring { 0% { transform: scale(0.8); opacity: 1; } 100% { transform: scale(2.2); opacity: 0; } }
+            @keyframes check-pop { 0% { transform: scale(0); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }
+            @keyframes confetti-fall { 0% { transform: translateY(-10px) rotate(0deg); opacity: 1; } 100% { transform: translateY(40px) rotate(360deg); opacity: 0; } }
+            @keyframes shimmer { 0% { background-position: -200px 0; } 100% { background-position: 200px 0; } }
+            .slide-in-right { animation: slide-in-right 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+            .pulse-ring { animation: pulse-ring 1.5s cubic-bezier(0, 0.55, 0.45, 1) infinite; }
+            .check-pop { animation: check-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s backwards; }
+            .confetti { position: absolute; width: 6px; height: 6px; border-radius: 1px; animation: confetti-fall 1.2s ease-out forwards; }
+            .shimmer-bg { background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%); background-size: 200px 100%; animation: shimmer 2s infinite; }
+          `}</style>
+          <div className="slide-in-right bg-gradient-to-br from-green-500 via-emerald-500 to-teal-500 text-white rounded-2xl shadow-2xl shadow-green-500/40 border border-white/20 overflow-hidden relative">
+            {/* Shimmer overlay */}
+            <div className="absolute inset-0 shimmer-bg pointer-events-none"></div>
+
+            {/* Confetti */}
+            <div className="confetti bg-yellow-300" style={{ top: '10%', left: '20%', animationDelay: '0.1s' }}></div>
+            <div className="confetti bg-pink-400" style={{ top: '5%', left: '40%', animationDelay: '0.25s' }}></div>
+            <div className="confetti bg-blue-300" style={{ top: '8%', left: '60%', animationDelay: '0.4s' }}></div>
+            <div className="confetti bg-purple-400" style={{ top: '12%', left: '80%', animationDelay: '0.55s' }}></div>
+            <div className="confetti bg-yellow-300" style={{ top: '15%', left: '30%', animationDelay: '0.7s' }}></div>
+            <div className="confetti bg-pink-400" style={{ top: '6%', left: '70%', animationDelay: '0.85s' }}></div>
+
+            <div className="relative px-6 py-4 flex items-center gap-4 min-w-[340px]">
+              {/* Pulsing check circle */}
+              <div className="relative flex-shrink-0">
+                <div className="absolute inset-0 bg-white/40 rounded-full pulse-ring"></div>
+                <div className="relative w-12 h-12 bg-white rounded-full flex items-center justify-center check-pop shadow-lg">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17l-5-5"/>
+                  </svg>
+                </div>
+              </div>
+
+              {/* Message */}
+              <div className="flex-1">
+                <p className="font-black text-lg leading-tight flex items-center gap-1.5">
+                  Saved! <span className="text-xl">&#10024;</span>
+                </p>
+                <p className="text-sm text-white/90 font-medium">{saveToast}</p>
+              </div>
+
+              {/* Close */}
+              <button onClick={() => setSaveToast(null)} className="text-white/70 hover:text-white transition flex-shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-1 bg-white/20">
+              <div className="h-full bg-white/70" style={{ animation: 'shrink-bar 3.5s linear forwards', transformOrigin: 'left' }}></div>
+            </div>
+            <style>{`@keyframes shrink-bar { 0% { transform: scaleX(1); } 100% { transform: scaleX(0); } }`}</style>
+          </div>
+        </div>
+      )}
+
+      {/* Phone Order Success — Steaming Iron Popup */}
+      {phoneOrderSuccess && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4 animate-fade-in">
+          <style>{`
+            @keyframes iron-slide { 0% { transform: translateX(-80px) rotate(-3deg); } 50% { transform: translateX(80px) rotate(3deg); } 100% { transform: translateX(-80px) rotate(-3deg); } }
+            @keyframes steam-rise { 0% { transform: translateY(0) scale(0.8); opacity: 0; } 30% { opacity: 0.9; } 100% { transform: translateY(-60px) scale(1.4); opacity: 0; } }
+            @keyframes pop-in { 0% { transform: scale(0.5) translateY(30px); opacity: 0; } 60% { transform: scale(1.05) translateY(-5px); opacity: 1; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+            @keyframes sparkle { 0%, 100% { transform: scale(0) rotate(0deg); opacity: 0; } 50% { transform: scale(1) rotate(180deg); opacity: 1; } }
+            @keyframes check-draw { 0% { stroke-dashoffset: 100; } 100% { stroke-dashoffset: 0; } }
+            .iron-anim { animation: iron-slide 2.2s ease-in-out infinite; transform-origin: center bottom; }
+            .steam { position: absolute; width: 14px; height: 14px; background: white; border-radius: 50%; filter: blur(3px); animation: steam-rise 1.8s ease-out infinite; }
+            .pop-container { animation: pop-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+            .sparkle { position: absolute; animation: sparkle 1.5s ease-in-out infinite; }
+          `}</style>
+          <div className="pop-container bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-blue-900 dark:via-gray-800 dark:to-purple-900 rounded-3xl shadow-2xl border border-blue-200 dark:border-blue-800 max-w-md w-full p-8 text-center relative overflow-hidden">
+            {/* Sparkles */}
+            <div className="sparkle text-yellow-400 text-2xl" style={{ top: '15%', left: '10%', animationDelay: '0s' }}>&#10024;</div>
+            <div className="sparkle text-yellow-400 text-xl" style={{ top: '20%', right: '12%', animationDelay: '0.3s' }}>&#10024;</div>
+            <div className="sparkle text-pink-400 text-lg" style={{ bottom: '25%', left: '15%', animationDelay: '0.6s' }}>&#10024;</div>
+            <div className="sparkle text-purple-400 text-xl" style={{ bottom: '20%', right: '18%', animationDelay: '0.9s' }}>&#10024;</div>
+
+            {/* Steaming Iron */}
+            <div className="relative h-32 mb-4 flex items-end justify-center">
+              {/* Steam puffs */}
+              <div className="steam" style={{ left: 'calc(50% - 25px)', bottom: '60px', animationDelay: '0s' }}></div>
+              <div className="steam" style={{ left: 'calc(50% - 5px)', bottom: '60px', animationDelay: '0.4s' }}></div>
+              <div className="steam" style={{ left: 'calc(50% + 15px)', bottom: '60px', animationDelay: '0.8s' }}></div>
+              <div className="steam" style={{ left: 'calc(50% - 15px)', bottom: '60px', animationDelay: '1.2s' }}></div>
+
+              {/* Iron SVG */}
+              <div className="iron-anim">
+                <svg width="120" height="80" viewBox="0 0 120 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  {/* Handle */}
+                  <path d="M35 18 Q35 8 50 8 L70 8 Q85 8 85 18 L85 28 L35 28 Z" fill="#1e40af"/>
+                  <rect x="40" y="10" width="40" height="6" rx="3" fill="#3b82f6"/>
+                  {/* Body */}
+                  <path d="M15 28 L105 28 Q110 28 112 35 L100 60 Q98 65 92 65 L28 65 Q22 65 20 60 L8 35 Q10 28 15 28 Z" fill="url(#ironGrad)"/>
+                  {/* Base plate (shiny) */}
+                  <path d="M20 58 L100 58 Q98 68 90 68 L30 68 Q22 68 20 58 Z" fill="#64748b"/>
+                  {/* Steam holes */}
+                  <circle cx="40" cy="50" r="2" fill="#fbbf24"/>
+                  <circle cx="55" cy="48" r="2" fill="#fbbf24"/>
+                  <circle cx="70" cy="50" r="2" fill="#fbbf24"/>
+                  <circle cx="85" cy="48" r="2" fill="#fbbf24"/>
+                  {/* Water tank indicator */}
+                  <rect x="50" y="35" width="20" height="8" rx="2" fill="#60a5fa" opacity="0.6"/>
+                  <defs>
+                    <linearGradient id="ironGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6"/>
+                      <stop offset="100%" stopColor="#1e40af"/>
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+            </div>
+
+            {/* Success Check Ring */}
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 dark:bg-green-900/40 rounded-full mb-4 ring-4 ring-green-200 dark:ring-green-800">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 6L9 17l-5-5" style={{ strokeDasharray: 100, strokeDashoffset: 100, animation: 'check-draw 0.6s ease-out 0.3s forwards' }}/>
+              </svg>
+            </div>
+
+            <h2 className="text-3xl font-black text-gray-900 dark:text-white mb-2">Order Pressed &amp; Ready!</h2>
+            <p className="text-lg text-gray-600 dark:text-gray-300 mb-4">
+              Phone order <span className="font-mono font-bold text-trust-blue">#{phoneOrderSuccess.id}</span> created successfully
+            </p>
+
+            <div className="bg-white dark:bg-gray-700 rounded-xl border border-gray-100 dark:border-gray-600 p-4 mb-4">
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                <Mail size={16} className="text-blue-500" />
+                <span>{phoneOrderSuccess.emailed ? 'Customer and store notified' : 'Store notified'}</span>
+              </div>
+            </div>
+
+            <button onClick={() => setPhoneOrderSuccess(null)} className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/30 transition-all hover:scale-[1.02]">
+              Got it! &#10024;
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Marketing Guru Popup */}
+      {showMarketingGuru && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[300] p-4" onClick={() => setShowMarketingGuru(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden transform animate-scale-in text-center" onClick={e => e.stopPropagation()}>
+            <div className="h-2 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500" />
+            <div className="p-8">
+              <div className="text-6xl mb-4 animate-bounce">🚀</div>
+              <div className="inline-block bg-gradient-to-r from-purple-600 to-pink-600 text-white px-4 py-1 rounded-full text-xs font-bold uppercase tracking-widest mb-4">Email Sent</div>
+              <h2 className="text-3xl font-black text-gray-900 mb-2">You're a Marketing Guru!</h2>
+              <p className="text-gray-500 mb-6">Your email just landed in their inbox. Keep it going — consistency is key to growing your customer base!</p>
+              <div className="flex gap-3 justify-center">
+                <div className="bg-purple-50 rounded-xl p-3 flex-1">
+                  <div className="text-2xl mb-1">📧</div>
+                  <p className="text-xs font-bold text-purple-700">Sent!</p>
+                </div>
+                <div className="bg-pink-50 rounded-xl p-3 flex-1">
+                  <div className="text-2xl mb-1">🎯</div>
+                  <p className="text-xs font-bold text-pink-700">Targeted</p>
+                </div>
+                <div className="bg-orange-50 rounded-xl p-3 flex-1">
+                  <div className="text-2xl mb-1">📈</div>
+                  <p className="text-xs font-bold text-orange-700">Growing</p>
+                </div>
+              </div>
+              <button onClick={() => setShowMarketingGuru(false)} className="mt-6 w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-xl font-bold hover:from-purple-700 hover:to-pink-700 transition-all transform hover:scale-105 shadow-lg shadow-purple-500/20">
+                Keep Crushing It!
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Surcharge Modal */}
       {showSurchargeModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[250] p-4 animate-fade-in">
@@ -8890,9 +10491,28 @@ const BookingPage: React.FC<{
   const [showMultiOfferWarning, setShowMultiOfferWarning] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
   const [recentItems, setRecentItems] = useState<{name: string; price: string; count: number}[]>([]);
+  const [recentFullOrders, setRecentFullOrders] = useState<any[]>([]);
+  const [washFoldWeight, setWashFoldWeight] = useState(0);
+  const [bookingSettings, setBookingSettings] = useState<any>({});
+
+  useEffect(() => {
+    const loadBookingSettings = async () => {
+      const { data } = await supabase.from('cp_app_settings').select('key, value').eq('tenant_id', tenant.id).in('key', ['wash_fold_enabled', 'wash_fold_price_per_kg', 'wash_fold_min_kg', 'delivery_lead_days']);
+      if (data) {
+        const s: any = {};
+        data.forEach((item: any) => { s[item.key] = item.value; });
+        setBookingSettings(s);
+      }
+    };
+    loadBookingSettings();
+  }, [tenant.id]);
 
   // Postcode Entry State
   const [showPostcodeModal, setShowPostcodeModal] = useState(true);
+  const [selectedUpcharges, setSelectedUpcharges] = useState<string[]>([]);
+  const [availableUpcharges, setAvailableUpcharges] = useState<{name: string; price: number}[]>([]);
+  const [minOrderValue, setMinOrderValue] = useState(15);
+  const [minOrderCheck, setMinOrderCheck] = useState<'before_discounts' | 'after_discounts'>('before_discounts');
   const [postcodeInput, setPostcodeInput] = useState('');
   const [postcodeChecking, setPostcodeChecking] = useState(false);
   const [postcodeResult, setPostcodeResult] = useState<{
@@ -8949,7 +10569,7 @@ const BookingPage: React.FC<{
         const { data: cats } = await supabase.from('cp_categories').select('*').eq('tenant_id', tenant.id).order('sort_order', { ascending: true });
         if (mounted && cats) {
           setCategories(cats);
-          if (cats.length > 0) setExpandedCats([cats[0].name]);
+          // All categories start closed — customer clicks to expand
         }
         const { data: svcs } = await supabase.from('cp_services').select('*').eq('tenant_id', tenant.id).order('category');
         if (mounted && svcs) setServices(svcs);
@@ -8979,6 +10599,8 @@ const BookingPage: React.FC<{
             .limit(10);
 
           if (recentOrders && mounted) {
+            // Store last 3 complete orders for "Repeat Order" feature
+            setRecentFullOrders(recentOrders.filter((o: any) => o.status === 'completed' || o.status === 'delivered').slice(0, 3));
             // Extract and count items from recent orders
             const itemCounts: Record<string, {name: string; price: string; count: number}> = {};
             recentOrders.forEach(order => {
@@ -9015,11 +10637,27 @@ const BookingPage: React.FC<{
   useEffect(() => {
     const loadPostcodeData = async () => {
       const { data: areas } = await supabase.from('cp_postcode_areas').select('*').eq('tenant_id', tenant.id).eq('is_active', true);
-      if (areas) setPostcodeAreas(areas);
+      if (areas) {
+        setPostcodeAreas(areas);
+        // No postcode areas configured — skip the modal entirely
+        if (areas.length === 0) setShowPostcodeModal(false);
+      }
       const { data: slots } = await supabase.from('cp_postcode_service_slots').select('*').eq('is_active', true);
       if (slots) setPostcodeSlots(slots);
     };
     loadPostcodeData();
+    // Load upcharges and min order settings
+    const loadBookingSettings = async () => {
+      const { data } = await supabase.from('cp_app_settings').select('key, value').eq('tenant_id', tenant.id).in('key', ['upcharges', 'min_order_value', 'min_order_check']);
+      if (data) {
+        data.forEach(s => {
+          if (s.key === 'upcharges') { try { setAvailableUpcharges(JSON.parse(s.value)); } catch { /* */ } }
+          if (s.key === 'min_order_value') setMinOrderValue(parseFloat(s.value) || 15);
+          if (s.key === 'min_order_check') setMinOrderCheck(s.value as any || 'before_discounts');
+        });
+      }
+    };
+    loadBookingSettings();
   }, [tenant]);
 
   // Check postcode against service areas
@@ -9267,10 +10905,13 @@ const BookingPage: React.FC<{
     }
 
     const finalTotal = totalBeforePoints - pointsDiscount;
-    const platformFee = (companySettings?.stripe_connect_account_id && (finalTotal > 0 || recurring !== 'none')) ? 1.00 : 0;
-    const grandTotal = finalTotal + platformFee;
+    const platformFee = (companySettings?.stripe_connect_account_id && (finalTotal > 0 || recurring !== 'none')) ? 0.50 : 0;
+    // Calculate upcharges
+    let upchargeTotal = 0;
+    upchargeTotal = availableUpcharges.filter(uc => selectedUpcharges.includes(uc.name)).reduce((sum, uc) => sum + (uc.price || 0), 0);
+    const grandTotal = finalTotal + platformFee + upchargeTotal;
     const potential = Math.floor(finalTotal * pointsPerPound);
-    return { subtotal, discount, codeDiscount, pointsDiscount, platformFee, finalTotal: grandTotal, potential, appliedPromotion };
+    return { subtotal, discount, codeDiscount, pointsDiscount, platformFee, upchargeTotal, orderTotal: finalTotal, finalTotal: grandTotal, potential, appliedPromotion };
   };
   const totals = calculateTotals();
 
@@ -9431,6 +11072,8 @@ const BookingPage: React.FC<{
         }
       }
 
+      const willUseStripe = companySettings?.stripe_connect_account_id && (totals.finalTotal > 0 || recurring !== 'none');
+
       const orderData: any = {
         readable_id: readableId,
         customer_name: customer.name,
@@ -9450,7 +11093,9 @@ const BookingPage: React.FC<{
         marketing_opt_in: marketingOptIn,
         preferences: userPreferences,
         notes: customer.notes || null,
-        tenant_id: tenant.id
+        tenant_id: tenant.id,
+        payment_method: willUseStripe ? 'stripe' : 'on_account',
+        payment_status: willUseStripe ? 'pending' : 'unpaid',
       };
 
       // Add customer_id if we have one
@@ -9473,6 +11118,10 @@ const BookingPage: React.FC<{
           unit_price: parseFloat(item.price),
           tenant_id: tenant.id
         }));
+        // Add upcharge items
+        availableUpcharges.filter(uc => selectedUpcharges.includes(uc.name)).forEach(uc => {
+          itemRows.push({ order_id: orderResult.id, item_name: `Upcharge: ${uc.name}`, quantity: 1, unit_price: uc.price || 0, tenant_id: tenant.id });
+        });
         const { error: itemsError } = await supabase.from('cp_order_items').insert(itemRows);
         if (itemsError) logger.warn('Order items insert error:', itemsError);
       }
@@ -9550,29 +11199,41 @@ const BookingPage: React.FC<{
         }
       } catch (sdErr) { console.error('[Shipday] COLLECTION ERROR:', sdErr); }
 
-      // --- Stripe Payment / Subscription Integration ---
-      // Only require Stripe payment if tenant uses per-transaction billing
-      const requiresStripePayment = tenant?.billing_type === 'per_transaction' &&
-        companySettings?.stripe_connect_account_id &&
+      // --- Stripe Payment Integration ---
+      // Require Stripe payment if Stripe Connect is set up and order has a charge
+      const requiresStripePayment = companySettings?.stripe_connect_account_id &&
         (totals.finalTotal > 0 || recurring !== 'none');
 
       if (requiresStripePayment) {
-        logger.debug('Initiating Stripe Payment Redirect...');
+        logger.debug('Initiating Stripe Payment Redirect...', { amount: totals.finalTotal, account: companySettings.stripe_connect_account_id });
         try {
           const { data: stripeData, error: stripeInvokeError } = await supabase.functions.invoke('stripe-payment', {
             body: {
               action: 'create-checkout-session',
-              amount: totals.finalTotal,
+              amount: totals.orderTotal,
               email: customer.email,
               customerName: customer.name,
               recurring: recurring,
               tenantId: tenant.id,
-              orderId: orderResult.id
+              orderId: orderResult.id,
+              success_url: `${window.location.origin}/customer-portal?payment=success&order_id=${orderResult.id}`,
+              cancel_url: `${window.location.origin}/booking?payment=cancel`
             }
           });
 
+          console.log('[Stripe] Response:', JSON.stringify(stripeData), 'Error:', stripeInvokeError);
+
           if (stripeInvokeError) {
-            logger.error('Stripe Function Error:', stripeInvokeError);
+            console.error('[Stripe] Function invocation error:', stripeInvokeError);
+            // Try to get the actual error body from the context
+            let errorDetail = stripeInvokeError.message || 'Unknown error';
+            try {
+              if ((stripeInvokeError as any).context) {
+                const body = await (stripeInvokeError as any).context.json();
+                errorDetail = body?.error || body?.message || errorDetail;
+              }
+            } catch {}
+            alert('Payment setup failed: ' + errorDetail);
           } else if (stripeData?.url) {
             // Store the session ID in the order before redirecting
             if (stripeData.sessionId) {
@@ -9580,10 +11241,16 @@ const BookingPage: React.FC<{
             }
             window.location.href = stripeData.url;
             return;
+          } else {
+            console.error('[Stripe] No URL in response:', stripeData);
+            alert('Payment redirect failed. Response: ' + JSON.stringify(stripeData));
           }
         } catch (stErr: any) {
-          logger.error('Failed to initiate Stripe:', stErr);
+          console.error('[Stripe] Exception:', stErr);
+          alert('Payment error: ' + stErr.message);
         }
+      } else {
+        console.log('[Stripe] Skipped — requiresStripePayment=false', { hasAccount: !!companySettings?.stripe_connect_account_id, total: totals.finalTotal, recurring });
       }
 
       if (!currentUser) {
@@ -9609,6 +11276,7 @@ const BookingPage: React.FC<{
       });
 
       setCart([]);
+      setSelectedUpcharges([]);
       logger.debug('Order Flow Complete.');
       setSuccessOrderId(readableId);
       setShowOrderSuccess(true);
@@ -9737,16 +11405,7 @@ const BookingPage: React.FC<{
               <p className="text-gray-500 text-sm mt-1">Enter your postcode area (e.g., SO21) to check availability</p>
             </div>
 
-            {/* No Postcode Areas Notice */}
-            {postcodeAreas.length === 0 && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-center">
-                <Info size={24} className="text-blue-600 mx-auto mb-2" />
-                <p className="text-blue-800 font-bold">Collection & Delivery Areas Coming Soon!</p>
-                <p className="text-sm text-blue-600 mt-1">Service areas are being configured. You can still place your order below.</p>
-              </div>
-            )}
-
-            {/* Postcode Input */}
+            {/* Postcode Input — only shown when postcode areas are configured */}
             {postcodeAreas.length > 0 && (
             <div className="mb-6">
               <div className="flex gap-2">
@@ -9874,33 +11533,17 @@ const BookingPage: React.FC<{
             <div className="flex gap-3 mt-6">
               <button
                 onClick={() => {
-                  setShowPostcodeModal(false);
-                  setPostcodeResult(null);
-                  setSelectedPostcodeSlot(null);
-                }}
-                className="flex-1 border-2 border-gray-300 text-gray-700 px-4 py-3 rounded-xl font-bold hover:bg-gray-50"
-              >
-                Skip for Now
-              </button>
-              <button
-                onClick={() => {
                   if (postcodeResult?.valid) {
-                    // Store the postcode in the postcode field
                     if (!customer.postcode) {
                       setCustomer({ ...customer, postcode: postcodeInput.toUpperCase() });
                     }
                     setShowPostcodeModal(false);
-                  } else if (!postcodeResult) {
-                    // No check done yet, allow skipping
-                    setShowPostcodeModal(false);
-                  } else {
-                    alert('Please enter a valid postcode in our service area to continue.');
                   }
                 }}
-                disabled={postcodeResult !== null && !postcodeResult.valid}
-                className="flex-1 bg-green-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!postcodeResult?.valid}
+                className="w-full bg-green-600 text-white px-4 py-3 rounded-xl font-bold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Continue to Booking
+                {postcodeResult?.valid ? 'Continue to Booking' : 'Enter your postcode to continue'}
               </button>
             </div>
           </div>
@@ -10046,6 +11689,81 @@ const BookingPage: React.FC<{
                       </button>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {/* Repeat Previous Order */}
+            {currentUser && recentFullOrders.length > 0 && (
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-4 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Repeat size={18} className="text-blue-500" />
+                  <span className="font-bold text-gray-800">Repeat a Previous Order</span>
+                </div>
+                <div className="space-y-2">
+                  {recentFullOrders.map((order: any, idx: number) => {
+                    const items = Array.isArray(order.items) ? order.items : [];
+                    const itemNames = items.slice(0, 3).map((i: any) => i.item_name || i.name).join(', ');
+                    return (
+                      <button key={order.id || idx} onClick={() => {
+                        const newCart = items.map((i: any) => ({
+                          name: i.item_name || i.name || 'Item',
+                          price: String(i.unit_price || i.price || 0),
+                          quantity: i.quantity || 1,
+                          note: ''
+                        }));
+                        setCart(newCart);
+                      }} className="w-full text-left bg-white border border-blue-100 rounded-lg p-3 hover:border-blue-400 hover:shadow-sm transition-all">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="text-xs text-gray-400">{new Date(order.created_at).toLocaleDateString()}</p>
+                            <p className="text-sm font-semibold text-gray-700 truncate">{itemNames}{items.length > 3 ? ` +${items.length - 3} more` : ''}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-trust-blue text-sm">£{parseFloat(order.total_amount || 0).toFixed(2)}</p>
+                            <p className="text-[10px] text-gray-400">{items.length} item{items.length !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Wash & Fold Per-Kilo Option */}
+            {bookingSettings?.wash_fold_enabled === 'true' && (
+              <div className="bg-gradient-to-r from-cyan-50 to-blue-50 rounded-xl border border-cyan-200 p-4 mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Droplet size={18} className="text-cyan-600" />
+                  <span className="font-bold text-gray-800">Wash &amp; Fold Service</span>
+                  <span className="text-xs text-gray-500">£{parseFloat(bookingSettings.wash_fold_price_per_kg || '5').toFixed(2)}/kg</span>
+                </div>
+                <div className="flex items-center gap-3 mb-3">
+                  <label className="text-sm font-semibold text-gray-700">Weight (kg):</label>
+                  <div className="flex items-center border border-cyan-300 rounded-lg overflow-hidden">
+                    <button onClick={() => setWashFoldWeight(Math.max(0, washFoldWeight - 0.5))} className="px-3 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 font-bold">−</button>
+                    <input type="number" min="0" step="0.5" value={washFoldWeight || ''} onChange={e => setWashFoldWeight(parseFloat(e.target.value) || 0)} className="w-16 text-center py-2 border-0 font-bold text-sm outline-none" placeholder="0" />
+                    <button onClick={() => setWashFoldWeight(washFoldWeight + 0.5)} className="px-3 py-2 bg-cyan-50 hover:bg-cyan-100 text-cyan-700 font-bold">+</button>
+                  </div>
+                  {washFoldWeight > 0 && (
+                    <span className="font-bold text-cyan-700">= £{(washFoldWeight * parseFloat(bookingSettings.wash_fold_price_per_kg || '5')).toFixed(2)}</span>
+                  )}
+                  {washFoldWeight > 0 && (
+                    <button onClick={() => {
+                      const price = (washFoldWeight * parseFloat(bookingSettings.wash_fold_price_per_kg || '5')).toFixed(2);
+                      setCart([...cart, { name: `Wash & Fold (${washFoldWeight}kg)`, price, quantity: 1, note: '' }]);
+                      setWashFoldWeight(0);
+                    }} className="bg-cyan-600 text-white px-4 py-2 rounded-lg font-bold text-sm hover:bg-cyan-700 transition">
+                      Add to Basket
+                    </button>
+                  )}
+                </div>
+                {parseFloat(bookingSettings.wash_fold_min_kg || '3') > 0 && (
+                  <p className="text-xs text-gray-500 mb-2">Minimum weight: {bookingSettings.wash_fold_min_kg || '3'}kg</p>
+                )}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-xs text-amber-800">
+                  <strong>&#9888;&#65039; Important:</strong> If dry cleaning items are mixed in with your wash &amp; fold bag, they will be washed — not dry cleaned. Please separate your items before collection.
                 </div>
               </div>
             )}
@@ -10228,7 +11946,7 @@ const BookingPage: React.FC<{
             <div className="flex justify-between items-center mb-4 border-b pb-2">
               <h3 className="font-bold text-xl">Your Basket</h3>
               {cart.length > 0 && (
-                <button onClick={() => setCart([])} className="text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1">
+                <button onClick={() => { setCart([]); setSelectedUpcharges([]); }} className="text-xs text-red-500 hover:text-red-700 font-semibold flex items-center gap-1">
                   <Trash2 size={12} /> Empty Cart
                 </button>
               )}
@@ -10294,13 +12012,51 @@ const BookingPage: React.FC<{
                   </div>
                 )}
 
+                {/* Upcharges */}
+                {availableUpcharges.length > 0 && (
+                  <div className="space-y-2 py-2 border-t border-gray-100">
+                    <p className="text-xs font-bold text-gray-500 uppercase">Add-ons</p>
+                    {availableUpcharges.map((uc, i) => (
+                      <label key={i} className="flex items-center justify-between cursor-pointer group">
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" checked={selectedUpcharges.includes(uc.name)} onChange={e => {
+                            if (e.target.checked) setSelectedUpcharges([...selectedUpcharges, uc.name]);
+                            else setSelectedUpcharges(selectedUpcharges.filter(n => n !== uc.name));
+                          }} className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" />
+                          <span className="text-sm text-gray-700 group-hover:text-gray-900">{uc.name}</span>
+                        </div>
+                        <span className="text-sm font-bold text-purple-600">+£{(uc.price || 0).toFixed(2)}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {totals.upchargeTotal > 0 && (
+                  <div className="flex justify-between items-center text-sm font-bold text-purple-600">
+                    <span>Add-ons</span>
+                    <span>£{totals.upchargeTotal.toFixed(2)}</span>
+                  </div>
+                )}
+
                 {totals.platformFee > 0 && (
                   <div className="flex justify-between items-center text-sm font-bold text-gray-500">
-                    <span>Platform Fee</span>
+                    <span>Service Fee</span>
                     <span>£{totals.platformFee.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center text-lg font-bold border-t pt-4 mt-2 text-trust-blue"><span>Total</span><span>£{totals.finalTotal.toFixed(2)}</span></div>
+
+                {/* Minimum order warning for Stripe payments */}
+                {(() => {
+                  const checkAmount = minOrderCheck === 'after_discounts' ? totals.orderTotal : totals.subtotal;
+                  const belowMin = companySettings?.stripe_connect_account_id && checkAmount > 0 && checkAmount < minOrderValue;
+                  return belowMin ? (
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+                      <AlertCircle size={16} className="text-red-500 flex-shrink-0" />
+                      <p className="text-sm text-red-600 font-medium">Minimum order value is £{minOrderValue.toFixed(2)} for online payment. Add £{(minOrderValue - checkAmount).toFixed(2)} more to proceed.</p>
+                    </div>
+                  ) : null;
+                })()}
 
                 {/* Enhanced Loyalty Points Earned Display */}
                 {totals.potential > 0 && (
@@ -10385,21 +12141,8 @@ const BookingPage: React.FC<{
           <h2 className="font-bold text-2xl mb-6">Select Collection Day</h2>
           <p className="text-gray-600 mb-6">When would you like us to collect your items?</p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            {postcodeResult?.collectionSlots && postcodeResult.collectionSlots.length > 0 ? (
-              postcodeResult.collectionSlots.map((slot: any) => (
-                <button
-                  key={slot.slot_id}
-                  onClick={() => setSelectedSlot(slot.slot_id)}
-                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === slot.slot_id ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
-                >
-                  <div className="font-bold text-lg mb-1">{slot.day_name}</div>
-                  <div className="flex items-center gap-2 text-sm opacity-80">
-                    <Clock size={16} /> {slot.label}
-                  </div>
-                  {selectedSlot === slot.slot_id && <div className="absolute top-2 right-2 bg-trust-blue text-white rounded-full p-1"><Check size={12} /></div>}
-                </button>
-              ))
-            ) : availableSlots.filter(s => s.type === 'collection' || !s.type).length > 0 ? (
+            {/* Always use default Schedule slots — postcode areas are only for service validation & surcharges */}
+            {availableSlots.filter(s => s.type === 'collection' || !s.type).length > 0 ? (
               availableSlots.filter(s => s.type === 'collection' || !s.type).map(slot => (
                 <button
                   key={slot.id}
@@ -10416,8 +12159,8 @@ const BookingPage: React.FC<{
             ) : (
               <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No collection slots available.</p>
             )}
-            {/* Only show Anytime if no postcode-specific slots AND no general collection slots */}
-            {!(postcodeResult?.collectionSlots && postcodeResult.collectionSlots.length > 0) && availableSlots.filter(s => s.type === 'collection' || !s.type).length === 0 && (
+            {/* Only show Anytime if no general collection slots */}
+            {availableSlots.filter(s => s.type === 'collection' || !s.type).length === 0 && (
               <button
                 onClick={() => setSelectedSlot('anytime')}
                 className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedSlot === 'anytime' ? 'border-trust-blue bg-blue-50 text-trust-blue shadow-md' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
@@ -10440,41 +12183,76 @@ const BookingPage: React.FC<{
       {step === 3 && (
         <div className="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-lg border border-gray-100">
           <h2 className="font-bold text-2xl mb-6">Select Delivery Day</h2>
-          <p className="text-gray-600 mb-6">When would you like us to deliver your cleaned items?</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            {postcodeResult?.deliverySlots && postcodeResult.deliverySlots.length > 0 ? (
-              postcodeResult.deliverySlots.map((slot: any) => (
-                <button
-                  key={slot.slot_id}
-                  onClick={() => setSelectedDeliverySlot(slot.slot_id)}
-                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === slot.slot_id ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
-                >
-                  <div className="font-bold text-lg mb-1">{slot.day_name}</div>
-                  <div className="flex items-center gap-2 text-sm opacity-80">
-                    <Clock size={16} /> {slot.label}
-                  </div>
-                  {selectedDeliverySlot === slot.slot_id && <div className="absolute top-2 right-2 bg-eco-green text-white rounded-full p-1"><Check size={12} /></div>}
-                </button>
-              ))
-            ) : availableSlots.filter(s => s.type === 'delivery').length > 0 ? (
-              availableSlots.filter(s => s.type === 'delivery').map(slot => (
-                <button
-                  key={slot.id}
-                  onClick={() => setSelectedDeliverySlot(slot.id)}
-                  className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === slot.id ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
-                >
-                  <div className="font-bold text-lg mb-1">{slot.day}</div>
-                  <div className="flex items-center gap-2 text-sm opacity-80">
-                    <Clock size={16} /> {slot.label} - {getNextDate(slot.day)}
-                  </div>
-                  {selectedDeliverySlot === slot.id && <div className="absolute top-2 right-2 bg-eco-green text-white rounded-full p-1"><Check size={12} /></div>}
-                </button>
-              ))
-            ) : (
-              <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">No delivery slots available.</p>
-            )}
-            {/* Only show Anytime if no postcode-specific slots AND no general delivery slots */}
-            {!(postcodeResult?.deliverySlots && postcodeResult.deliverySlots.length > 0) && availableSlots.filter(s => s.type === 'delivery').length === 0 && (
+          <p className="text-gray-600 mb-2">When would you like us to deliver your cleaned items?</p>
+          {selectedSlot && bookingSettings?.delivery_lead_days && parseInt(bookingSettings.delivery_lead_days) > 0 && (
+            <p className="text-xs text-blue-600 mb-4 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 inline-block">
+              <Info size={12} className="inline mr-1" /> Earliest delivery: {bookingSettings.delivery_lead_days} days after collection
+            </p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 mt-4">
+            {(() => {
+              const leadDays = parseInt(bookingSettings?.delivery_lead_days || '2');
+              const selectedCollection = availableSlots.find(s => s.id === selectedSlot);
+              const collectionDayName = selectedCollection?.day || '';
+              const dayMap: Record<string, number> = { 'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3, 'Thursday': 4, 'Friday': 5, 'Saturday': 6 };
+              // Calculate earliest delivery date based on collection + lead days
+              const collectionDate = new Date();
+              if (collectionDayName && dayMap[collectionDayName] !== undefined) {
+                const today = collectionDate.getDay();
+                const target = dayMap[collectionDayName];
+                const daysUntil = (target - today + 7) % 7;
+                collectionDate.setDate(collectionDate.getDate() + daysUntil);
+              }
+              const earliestDelivery = new Date(collectionDate);
+              earliestDelivery.setDate(earliestDelivery.getDate() + leadDays);
+
+              const filteredDeliverySlots = availableSlots.filter(s => {
+                if (s.type !== 'delivery') return false;
+                if (!selectedSlot || !collectionDayName) return true;
+                const slotDayIdx = dayMap[s.day];
+                if (slotDayIdx === undefined) return true;
+                // Find next occurrence of this day
+                const check = new Date();
+                const daysUntil = (slotDayIdx - check.getDay() + 7) % 7;
+                check.setDate(check.getDate() + daysUntil);
+                if (check < earliestDelivery) {
+                  // Try next week
+                  check.setDate(check.getDate() + 7);
+                }
+                return check >= earliestDelivery;
+              });
+
+              if (filteredDeliverySlots.length === 0) {
+                return (
+                  <p className="text-gray-500 col-span-2 text-center py-4 bg-gray-50 rounded-lg">
+                    {selectedSlot ? `No delivery slots available ${leadDays}+ days after your collection day.` : 'No delivery slots available.'}
+                  </p>
+                );
+              }
+
+              return filteredDeliverySlots.map(slot => {
+                const slotDayIdx = dayMap[slot.day];
+                const check = new Date();
+                const daysUntil = (slotDayIdx - check.getDay() + 7) % 7;
+                check.setDate(check.getDate() + daysUntil);
+                if (check < earliestDelivery) check.setDate(check.getDate() + 7);
+                return (
+                  <button
+                    key={slot.id}
+                    onClick={() => setSelectedDeliverySlot(slot.id)}
+                    className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === slot.id ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
+                  >
+                    <div className="font-bold text-lg mb-1">{slot.day}</div>
+                    <div className="flex items-center gap-2 text-sm opacity-80">
+                      <Clock size={16} /> {slot.label} - {check.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                    </div>
+                    {selectedDeliverySlot === slot.id && <div className="absolute top-2 right-2 bg-eco-green text-white rounded-full p-1"><Check size={12} /></div>}
+                  </button>
+                );
+              });
+            })()}
+            {/* Only show Anytime if no general delivery slots */}
+            {availableSlots.filter(s => s.type === 'delivery').length === 0 && (
               <button
                 onClick={() => setSelectedDeliverySlot('anytime')}
                 className={`flex flex-col p-4 rounded-xl border-2 text-left transition relative overflow-hidden group ${selectedDeliverySlot === 'anytime' ? 'border-eco-green bg-green-50 text-eco-green shadow-md' : 'border-gray-200 hover:border-green-200 hover:bg-gray-50'}`}
@@ -10555,11 +12333,11 @@ const BookingPage: React.FC<{
               <button onClick={() => setStep(3)} className="text-gray-500 font-bold hover:text-gray-700">Back</button>
               <button
                 onClick={submitOrder}
-                disabled={!customer.name || !customer.phone || !customer.address || !customer.postcode || loading}
+                disabled={!customer.name || !customer.phone || !customer.address || !customer.postcode || loading || (companySettings?.stripe_connect_account_id && ((minOrderCheck === 'after_discounts' ? totals.orderTotal : totals.subtotal) > 0) && ((minOrderCheck === 'after_discounts' ? totals.orderTotal : totals.subtotal) < minOrderValue))}
                 className={`${(companySettings?.stripe_connect_account_id && (totals.finalTotal > 0 || recurring !== 'none')) ? 'bg-trust-blue' : 'bg-green-600'} text-white px-8 py-3 rounded-lg font-bold hover:opacity-90 disabled:opacity-50 shadow-lg flex items-center gap-2 transition-all transform active:scale-95`}
               >
                 {loading ? <Loader2 className="animate-spin" size={18} /> : <CreditCard size={18} />}
-                {(companySettings?.stripe_connect_account_id && (totals.finalTotal > 0 || recurring !== 'none')) ? 'Pay & Confirm Booking' : 'Confirm Booking'}
+                {(companySettings?.stripe_connect_account_id && (totals.finalTotal > 0 || recurring !== 'none')) ? 'Pay & Confirm Booking' : 'Confirm Booking (On Account)'}
               </button>
             </div>
           </div>
@@ -10662,8 +12440,18 @@ const HomePage: React.FC<{ tenant: any; setPage: (p: Page) => void; settings?: a
         <div className="absolute inset-0 bg-cover" style={{ backgroundImage: `url('${settings?.hero_image || '/hero.png'}')`, backgroundPosition: settings?.hero_position || 'center center' }} />
         <div className="absolute inset-0" style={{ backgroundColor: `rgba(0,0,0,${settings?.hero_overlay ? (parseInt(settings.hero_overlay) / 100) : 0.7})` }} />
         <div className="relative max-w-4xl mx-auto text-center space-y-6">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 font-heading drop-shadow-lg">Welcome to {tenant.name}</h1>
-          <p className="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">Professional care for your clothes. Eco-friendly, reliable, and delivered to your door in Winchester and surrounding areas.</p>
+          {settings?.hide_hero_text === 'true' ? (
+            <>
+              {/* SEO-only — hidden visually but accessible to search engines */}
+              <h1 className="sr-only">Welcome to {tenant.name}</h1>
+              <p className="sr-only">{tenant.seo_description || `Professional care for your clothes. Eco-friendly, reliable, and delivered to your door.`}</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-4xl md:text-6xl font-bold mb-4 font-heading drop-shadow-lg">Welcome to {tenant.name}</h1>
+              <p className="text-xl text-gray-200 mb-8 max-w-2xl mx-auto">{tenant.seo_description || `Professional care for your clothes. Eco-friendly, reliable, and delivered to your door.`}</p>
+            </>
+          )}
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <button onClick={() => setPage('booking')} className="bg-trust-blue hover:bg-trust-blue-hover text-white px-8 py-4 rounded-full font-bold text-lg shadow-xl flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 group">Book Your Collection <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" /></button>
             <button onClick={() => setPage('services')} className="bg-white/10 backdrop-blur-md text-white border border-white/20 hover:bg-white/20 px-8 py-4 rounded-full font-bold text-lg shadow-xl transition-all">View Our Price List</button>
@@ -10866,7 +12654,7 @@ const ContactPage: React.FC<{ settings?: any }> = ({ settings }) => (
 
 
 // Enhanced Reports Tab Component - Corporate Style
-type ReportView = 'dashboard' | 'revenue' | 'top-items' | 'busiest-times' | 'customers' | 'preferences' | 'drivers' | 'services' | 'subscriptions';
+type ReportView = 'dashboard' | 'revenue' | 'top-items' | 'busiest-times' | 'customers' | 'preferences' | 'drivers' | 'services' | 'subscriptions' | 'corporate';
 
 const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [activeReport, setActiveReport] = useState<ReportView>('dashboard');
@@ -10881,6 +12669,7 @@ const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [previousPeriodOrders, setPreviousPeriodOrders] = useState<any[]>([]);
   const [tableSearchTerm, setTableSearchTerm] = useState('');
   const [tableSortConfig, setTableSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [corporateAccounts, setCorporateAccounts] = useState<any[]>([]);
 
   // Collection Failed Modal states
   const [showCollectionFailedModal, setShowCollectionFailedModal] = useState(false);
@@ -10932,9 +12721,16 @@ const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       .select('*')
       .eq('tenant_id', tenantId);
 
+    // Fetch corporate accounts
+    const { data: corpData } = await supabase
+      .from('cp_corporate_accounts')
+      .select('*')
+      .eq('tenant_id', tenantId);
+
     if (ordersData) setOrders(ordersData);
     if (prevOrdersData) setPreviousPeriodOrders(prevOrdersData);
     if (customersData) setCustomers(customersData);
+    if (corpData) setCorporateAccounts(corpData);
 
     setLoading(false);
   };
@@ -11141,6 +12937,7 @@ const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     { id: 'drivers', icon: <Truck size={18} />, label: 'Drivers' },
     { id: 'services', icon: <Layers size={18} />, label: 'Services' },
     { id: 'subscriptions', icon: <Repeat size={18} />, label: 'Subscriptions' },
+    { id: 'corporate', icon: <Building2 size={18} />, label: 'Corporate' },
   ];
 
   // Table sort handler
@@ -11596,6 +13393,51 @@ const ReportsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                 size={180}
               />
             </div>
+          </div>
+        )}
+
+        {/* Corporate Report View */}
+        {activeReport === 'corporate' && (
+          <div className="space-y-6 animate-fade-in">
+            {(() => {
+              const corpAccts = corporateAccounts || [];
+              const corpEmails = corpAccts.map((ca: any) => ca.email?.toLowerCase());
+              const corpOrders = orders.filter((o: any) => corpEmails.includes(o.customer_email?.toLowerCase()));
+              const corpRevenue = corpOrders.reduce((sum: number, o: any) => sum + (parseFloat(o.total_amount) || 0), 0);
+              return (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                    <KPICard title="Corporate Accounts" value={corpAccts.length} icon={<Building2 size={20} className="text-blue-600" />} color="blue" />
+                    <KPICard title="Corporate Orders" value={corpOrders.length} icon={<Package size={20} className="text-green-600" />} color="green" />
+                    <KPICard title="Corporate Revenue" value={`£${corpRevenue.toFixed(2)}`} icon={<DollarSign size={20} className="text-green-600" />} color="green" />
+                    <KPICard title="Avg Order Value" value={`£${corpOrders.length > 0 ? (corpRevenue / corpOrders.length).toFixed(2) : '0.00'}`} icon={<TrendingUp size={20} className="text-purple-600" />} color="purple" />
+                  </div>
+                  <div className="bg-white rounded-xl shadow-sm border p-6">
+                    <h3 className="font-semibold text-gray-800 mb-4">Corporate Account Performance</h3>
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 text-gray-500 font-medium"><tr><th className="px-4 py-3 text-left">Account</th><th className="px-4 py-3 text-left">Contact</th><th className="px-4 py-3 text-center">Orders</th><th className="px-4 py-3 text-center">Revenue</th><th className="px-4 py-3 text-center">Discount</th><th className="px-4 py-3 text-center">Account ID</th></tr></thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {corpAccts.map((ca: any) => {
+                          const acctOrders = corpOrders.filter((o: any) => o.customer_email?.toLowerCase() === ca.email?.toLowerCase());
+                          const acctRev = acctOrders.reduce((s: number, o: any) => s + (parseFloat(o.total_amount) || 0), 0);
+                          return (
+                            <tr key={ca.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-semibold">{ca.company_name}</td>
+                              <td className="px-4 py-3 text-gray-600">{ca.contact_name || ca.email}</td>
+                              <td className="px-4 py-3 text-center font-bold">{acctOrders.length}</td>
+                              <td className="px-4 py-3 text-center font-bold text-green-600">£{acctRev.toFixed(2)}</td>
+                              <td className="px-4 py-3 text-center">{ca.discount_percent || 0}%</td>
+                              <td className="px-4 py-3 text-center font-mono text-xs">{ca.account_id || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                        {corpAccts.length === 0 && <tr><td colSpan={6} className="text-center py-8 text-gray-400">No corporate accounts configured.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -12759,13 +14601,469 @@ const PartnerLoginModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({
   );
 };
 
+// Shared SaaS Nav + Footer wrapper
+const SaaSLayout: React.FC<{ children: React.ReactNode; setPage: (p: Page) => void; onSignUp: () => void; onPartnerLogin: () => void; user?: any; onLogout?: () => void; onGoToDashboard?: () => void }> = ({ children, setPage, onSignUp, onPartnerLogin, user, onLogout, onGoToDashboard }) => (
+  <div className="min-h-screen bg-white dark:bg-gray-950">
+    <nav className="fixed top-0 left-0 w-full z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
+      <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => setPage('saas-landing')}>
+          <div className="w-10 h-10 bg-trust-blue rounded-xl flex items-center justify-center"><Sparkles size={24} className="text-white" /></div>
+          <span className="text-2xl font-black tracking-tighter text-gray-900 dark:text-white">CleanPOS</span>
+        </div>
+        <div className="hidden md:flex items-center gap-6 text-sm font-bold text-gray-600 dark:text-gray-400">
+          <button onClick={() => setPage('saas-product')} className="hover:text-trust-blue transition">Product</button>
+          <button onClick={() => setPage('saas-pricing')} className="hover:text-trust-blue transition">Pricing</button>
+          <button onClick={() => setPage('saas-resources')} className="hover:text-trust-blue transition">Resources</button>
+          <button onClick={() => setPage('saas-support')} className="hover:text-trust-blue transition">Support</button>
+        </div>
+        <div className="flex items-center gap-4">
+          {user ? (
+            <>
+              <button onClick={onGoToDashboard} className="text-trust-blue font-bold px-4 py-2 hover:bg-blue-50 rounded-lg transition">Dashboard</button>
+              <button onClick={onLogout} className="bg-red-50 text-red-600 px-6 py-2.5 rounded-full font-bold hover:bg-red-100 transition">Logout</button>
+            </>
+          ) : (
+            <>
+              <button onClick={onPartnerLogin} className="hidden sm:block text-gray-600 dark:text-gray-400 font-bold hover:text-trust-blue transition">Partner Login</button>
+              <button onClick={onSignUp} className="bg-trust-blue text-white px-6 py-2.5 rounded-full font-bold hover:bg-trust-blue-hover transition shadow-lg shadow-blue-500/20">Sign Up</button>
+            </>
+          )}
+        </div>
+      </div>
+    </nav>
+    <div className="pt-20">{children}</div>
+    <footer className="bg-gray-950 text-white py-12 border-t border-gray-900">
+      <div className="max-w-7xl mx-auto px-6">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-8">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setPage('saas-landing')}>
+            <ShieldCheck className="text-trust-blue" size={24} />
+            <span className="font-bold text-xl uppercase tracking-tighter">CLEANPOS</span>
+          </div>
+          <div className="flex gap-8 text-sm text-gray-400 font-medium">
+            <button onClick={() => setPage('saas-product')} className="hover:text-white transition">Product</button>
+            <button onClick={() => setPage('saas-pricing')} className="hover:text-white transition">Pricing</button>
+            <button onClick={() => setPage('saas-resources')} className="hover:text-white transition">Resources</button>
+            <button onClick={() => setPage('saas-support')} className="hover:text-white transition">Support</button>
+          </div>
+          <div className="flex items-center gap-4"></div>
+        </div>
+        <div className="mt-12 pt-8 border-t border-gray-900 flex flex-col md:flex-row justify-between items-center gap-4">
+          <p className="text-xs text-gray-500">© 2026 Posso Software Solutions Ltd. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+  </div>
+);
+
+// ========== PRODUCT PAGE ==========
+const SaaSProductPage: React.FC<{ setPage: (p: Page) => void; onSignUp: () => void; onPartnerLogin: () => void; user?: any; onLogout?: () => void; onGoToDashboard?: () => void }> = (props) => {
+  const features = [
+    { icon: Calendar, title: 'Online Booking System', desc: '4-step booking flow with collection & delivery time slots. Postcode area validation, surcharges, and capacity management built in.', details: ['Configurable time slots per postcode area', 'Automatic capacity tracking', 'Collection & delivery scheduling', 'Recurring order support (weekly/bi-weekly)'] },
+    { icon: Users, title: 'Customer Portal & CRM', desc: 'Give your customers their own account with order history, loyalty points, and real-time tracking.', details: ['Customer self-service portal', 'Loyalty points programme', 'Order history & reordering', 'Automated welcome emails with vouchers'] },
+    { icon: ShoppingBag, title: 'Back Office Dashboard', desc: 'Complete order management with status tracking, invoicing, driver assignment, and business analytics.', details: ['Real-time order status pipeline', 'One-click invoicing', 'Driver assignment & tracking', 'Customer database management'] },
+    { icon: Truck, title: 'Driver Tracking & Delivery', desc: 'Integrated with Shipday for real-time driver tracking, route optimisation, and proof of delivery.', details: ['Real-time GPS tracking', 'Automated status updates', 'Delivery photo proof', 'Driver portal with assigned routes'] },
+    { icon: Mail, title: 'Automated Email Marketing', desc: 'Powered by Brevo — send branded order confirmations, welcome emails, and promotional campaigns automatically.', details: ['HTML branded email templates', 'Order confirmation with tracking link', 'Customer welcome with 10% voucher', 'Store onboarding guide emails'] },
+    { icon: Tag, title: 'Services & Catalog Management', desc: 'Manage your services, categories, pricing, and discount codes from one place.', details: ['Unlimited services & categories', 'Custom pricing per service', 'Discount codes & promotions', 'Corporate account support'] },
+    { icon: Printer, title: 'Multi-Device POS & Printing', desc: 'Desktop app with thermal receipt printing, garment tags, and bag tags via Brother QL-800 & Bixolon printers.', details: ['Windows desktop app (Electron)', 'Thermal receipt printing', 'Garment stub tags (DStubs)', 'Brother QL-800 bag tags'] },
+    { icon: CreditCard, title: 'Stripe Online Payments', desc: 'Accept payments online via Stripe Checkout. Automatic fee splitting — you get paid, we take a small platform fee.', details: ['Stripe Connect integration', 'Automatic fee splitting', 'On-account fallback for manual billing', '£15 minimum order protection'] },
+  ];
+
+  return (
+    <SaaSLayout {...props}>
+      {/* Hero */}
+      <section className="bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 text-white py-24 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl md:text-6xl font-black mb-6">Everything You Need to Run Your Business Online</h1>
+          <p className="text-xl text-gray-300 max-w-2xl mx-auto">From online bookings to driver tracking, customer loyalty to automated emails — CleanPOS replaces 6+ tools with one platform.</p>
+        </div>
+      </section>
+
+      {/* Features Grid */}
+      <section className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {features.map((f, i) => (
+              <div key={i} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-8 hover:shadow-xl hover:border-trust-blue/30 transition-all group">
+                <div className="w-14 h-14 bg-trust-blue/10 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-trust-blue/20 transition">
+                  <f.icon size={28} className="text-trust-blue" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-3">{f.title}</h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-4">{f.desc}</p>
+                <ul className="space-y-2">
+                  {f.details.map((d, j) => (
+                    <li key={j} className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                      <CheckCircle size={16} className="text-green-500 shrink-0" /> {d}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="bg-trust-blue py-16 px-6 text-center">
+        <h2 className="text-3xl font-bold text-white mb-4">Ready to Transform Your Business?</h2>
+        <p className="text-blue-100 mb-8 max-w-xl mx-auto">Join hundreds of service businesses already using CleanPOS. Start your 15-day free trial — no credit card required.</p>
+        <button onClick={props.onSignUp} className="bg-white text-trust-blue px-10 py-4 rounded-full font-bold text-lg hover:bg-gray-50 transition shadow-xl">Start Your Free Trial</button>
+      </section>
+    </SaaSLayout>
+  );
+};
+
+// ========== PRICING PAGE ==========
+const SaaSPricingPage: React.FC<{ setPage: (p: Page) => void; onSignUp: () => void; onPartnerLogin: () => void; user?: any; onLogout?: () => void; onGoToDashboard?: () => void }> = (props) => {
+  const [orderSlider, setOrderSlider] = useState(200);
+
+  const faqs = [
+    { q: 'What does £1 per order include?', a: 'Everything. Online booking, customer portal, back office, driver tracking, email notifications, printing — all features are included with every order.' },
+    { q: 'Are there any monthly fees?', a: 'No. You only pay when you process orders. Zero orders in a month means zero cost.' },
+    { q: 'How does billing work?', a: 'We use Stripe Connect. When a customer pays online, £1 + VAT (£1.20) is automatically deducted from the payment before it reaches your bank account. The customer also pays a 50p service fee.' },
+    { q: 'Is there a minimum order value?', a: 'Yes, £15 minimum for online Stripe payments. Orders below £15 can still be processed as "On Account" for manual billing.' },
+    { q: 'Can I cancel anytime?', a: 'Yes, there are no contracts or commitments. Stop processing orders and you stop paying. Your data stays available for 90 days.' },
+    { q: 'What about offline/in-store orders?', a: 'Orders created manually in the back office or desktop POS app don\'t incur the platform fee — only online customer orders do.' },
+    { q: 'Do my customers pay anything extra?', a: 'A 50p service fee is added to their checkout total. This is clearly shown before they pay.' },
+    { q: 'Is there a free trial?', a: 'Yes! 15-day free trial with full access to all features. No credit card required to start.' },
+  ];
+
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  return (
+    <SaaSLayout {...props}>
+      {/* Hero */}
+      <section className="bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 text-white py-24 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl md:text-6xl font-black mb-6">Simple, Transparent Pricing</h1>
+          <p className="text-xl text-gray-300">No monthly fees. No hidden costs. Pay only when you process orders.</p>
+        </div>
+      </section>
+
+      {/* Pricing Card */}
+      <section className="py-20 px-6">
+        <div className="max-w-lg mx-auto">
+          <div className="bg-white dark:bg-gray-900 border-2 border-trust-blue rounded-3xl overflow-hidden shadow-2xl shadow-blue-500/10">
+            <div className="bg-trust-blue text-white p-8 text-center">
+              <p className="text-sm font-bold uppercase tracking-widest opacity-80 mb-2">Pay Per Order</p>
+              <div className="flex items-baseline justify-center gap-1">
+                <span className="text-6xl font-black">£1</span>
+                <span className="text-xl opacity-80">/order</span>
+              </div>
+              <p className="mt-3 text-blue-100">+ 50p service fee charged to customer</p>
+            </div>
+            <div className="p-8">
+              {['Unlimited customers & orders', 'Online booking system', 'Customer portal with loyalty', 'Back office dashboard', 'Driver tracking (Shipday)', 'Automated email marketing', 'Services & catalog management', 'Desktop POS app with printing', 'Stripe payment processing', '15-day free trial'].map((f, i) => (
+                <div key={i} className="flex items-center gap-3 py-3 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                  <CheckCircle size={20} className="text-green-500 shrink-0" />
+                  <span className="text-gray-700 dark:text-gray-300 font-medium">{f}</span>
+                </div>
+              ))}
+              <button onClick={props.onSignUp} className="w-full mt-8 bg-trust-blue text-white py-4 rounded-xl font-bold text-lg hover:bg-trust-blue-hover transition">Get Started Now</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* What Stores Get */}
+      <section className="bg-gray-50 dark:bg-gray-900 py-20 px-6">
+        <div className="max-w-2xl mx-auto text-center">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">What You Get</h2>
+          <p className="text-gray-500 mb-10">Everything included from day one — no add-ons, no upgrades, no surprises.</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[{ num: 'Unlimited', label: 'Customers' }, { num: 'Unlimited', label: 'Orders' }, { num: 'Unlimited', label: 'Services' }, { num: '15 Days', label: 'Free Trial' }].map((s, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm">
+                <p className="text-2xl font-black text-trust-blue">{s.num}</p>
+                <p className="text-sm text-gray-500 mt-1">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Comparison */}
+      <section className="py-20 px-6">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-12">Why Pay Per Order Wins</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-8">
+              <h3 className="text-lg font-bold text-red-700 dark:text-red-400 mb-4">Traditional Monthly Plans</h3>
+              <ul className="space-y-3 text-gray-600 dark:text-gray-400">
+                {['£50-200/month whether you use it or not', 'Pay for features you don\'t need', 'Locked into annual contracts', 'Surprise price increases', 'Extra fees for integrations'].map((t, i) => (
+                  <li key={i} className="flex items-center gap-2"><XCircle size={16} className="text-red-400 shrink-0" /> {t}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-2xl p-8">
+              <h3 className="text-lg font-bold text-green-700 dark:text-green-400 mb-4">CleanPOS Pay Per Order</h3>
+              <ul className="space-y-3 text-gray-600 dark:text-gray-400">
+                {['Only pay when you earn', 'All features included, always', 'No contracts — cancel anytime', 'Price locked at £1/order', 'Stripe, Shipday, Brevo all included'].map((t, i) => (
+                  <li key={i} className="flex items-center gap-2"><CheckCircle size={16} className="text-green-500 shrink-0" /> {t}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="bg-gray-50 dark:bg-gray-900 py-20 px-6">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-12">Frequently Asked Questions</h2>
+          <div className="space-y-3">
+            {faqs.map((faq, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <button onClick={() => setOpenFaq(openFaq === i ? null : i)} className="w-full flex justify-between items-center p-5 text-left font-bold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+                  {faq.q}
+                  <ChevronDown size={20} className={`text-gray-400 transition-transform ${openFaq === i ? 'rotate-180' : ''}`} />
+                </button>
+                {openFaq === i && <div className="px-5 pb-5 text-gray-600 dark:text-gray-400">{faq.a}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+    </SaaSLayout>
+  );
+};
+
+// ========== RESOURCES PAGE ==========
+const SaaSResourcesPage: React.FC<{ setPage: (p: Page) => void; onSignUp: () => void; onPartnerLogin: () => void; user?: any; onLogout?: () => void; onGoToDashboard?: () => void }> = (props) => {
+  const guides = [
+    { icon: Rocket, title: 'Getting Started Guide', desc: 'Set up your store in under 5 minutes. Add services, configure delivery areas, and start taking orders.', steps: ['Sign up and name your store', 'Add your services and pricing', 'Configure collection & delivery postcode areas', 'Connect Stripe to accept payments', 'Share your booking link with customers'] },
+    { icon: Users, title: 'Managing Customers', desc: 'Build lasting relationships with your customer database, loyalty programme, and automated communications.', steps: ['View and edit customer profiles', 'Track order history per customer', 'Set up loyalty points and rewards', 'Send targeted email campaigns', 'Handle corporate accounts'] },
+    { icon: Truck, title: 'Setting Up Delivery', desc: 'Configure postcode areas, time slots, and connect Shipday for real-time driver tracking.', steps: ['Define your service postcode areas', 'Set collection & delivery time slots', 'Connect your Shipday API key', 'Assign drivers to orders', 'Track deliveries in real-time'] },
+    { icon: CreditCard, title: 'Payments & Billing', desc: 'Connect Stripe, understand the fee structure, and manage on-account customers.', steps: ['Complete Stripe Connect onboarding', 'Understand the fee split (£1.20 platform + 50p service)', 'Handle on-account / manual billing', 'View payment status in back office', 'Download invoices for your records'] },
+  ];
+
+  const [openArticle, setOpenArticle] = useState<number | null>(null);
+
+  const articles = [
+    { title: 'How to Move Your Dry Cleaning Business Online', desc: 'A step-by-step guide to digitising your dry cleaning or laundry service — from paper tickets to a full online booking system.', tag: 'Guide', content: [
+      { heading: 'Why Go Digital?', text: 'The dry cleaning industry is worth over £1 billion in the UK, yet most businesses still rely on paper tickets, phone bookings, and walk-in customers. Going digital isn\'t just about keeping up — it\'s about unlocking new revenue streams, reducing no-shows, and giving your customers the convenience they expect in 2026.' },
+      { heading: '1. Set Up Your Online Store', text: 'With CleanPOS, signing up takes under 2 minutes. Enter your business name, choose a subdomain (e.g., yourstore.xp-clean.web.app), and you\'re live. No developers, no hosting fees, no app downloads required. Your customers visit your unique URL and start booking immediately.' },
+      { heading: '2. Add Your Services & Pricing', text: 'Go to Back Office → Services and add everything you offer: dry cleaning, laundry, alterations, repairs, ironing, specialist items. Set prices, add categories (e.g., "Suits", "Dresses", "Household"), and upload images. You can create as many services as you need — there\'s no limit.' },
+      { heading: '3. Configure Collection & Delivery', text: 'Set up your service areas by postcode prefix (e.g., LE1, LE2, LE3). For each area, configure collection and delivery time slots — Monday 9-12, Tuesday 2-5, etc. Set maximum bookings per slot to manage capacity. Add surcharges for distant postcodes if needed.' },
+      { heading: '4. Connect Stripe for Payments', text: 'Go to Subscription & Billing → Connect Stripe. Complete Stripe\'s onboarding (bank details, identity verification) and you\'re ready to accept online payments. Customers pay at checkout, money goes directly to your bank account minus a small platform fee. No Stripe account? Orders still work as "On Account" for cash/card-on-delivery.' },
+      { heading: '5. Share Your Link & Start Taking Orders', text: 'Share your store URL via WhatsApp, Facebook, Instagram, email, or print it on your shopfront. Customers browse your services, select items, choose collection/delivery slots, and pay online. You get notified instantly in the Back Office. It\'s that simple.' },
+      { heading: 'The Result', text: 'You\'ve gone from paper tickets to a fully digital operation — online bookings, automated emails, real-time tracking, and cashless payments. Your customers get a modern experience, and you get more orders with less admin. Most stores see a 30-40% increase in repeat bookings within the first month.' },
+    ]},
+    { title: '5 Ways to Increase Repeat Customers', desc: 'Loyalty points, automated emails, discount codes — learn how to keep customers coming back using CleanPOS features.', tag: 'Tips', content: [
+      { heading: 'Why Repeat Customers Matter', text: 'Acquiring a new customer costs 5-7x more than retaining an existing one. A repeat customer spends 67% more on average than a new one. Here are five proven strategies you can implement today using CleanPOS features — no extra tools needed.' },
+      { heading: '1. Launch a Loyalty Programme', text: 'CleanPOS has a built-in loyalty points system. Customers earn points with every order and can redeem them for discounts. Set up your points-per-pound ratio in Settings. When a customer logs in, they see their points balance prominently displayed. It\'s a powerful incentive to book again — "You\'re only 20 points away from a free shirt clean!"' },
+      { heading: '2. Send Automated Welcome Emails', text: 'When a new customer signs up, CleanPOS automatically sends a branded HTML welcome email with a 10% discount voucher. This first touchpoint sets the tone — professional, branded, and incentivised. The voucher code is unique and tracked, so you can measure conversion.' },
+      { heading: '3. Use Discount Codes Strategically', text: 'Create seasonal discount codes in Back Office → Offers & Loyalty. Examples: "SUMMER10" for 10% off, "FIRST5" for £5 off first orders, "LOYAL20" for VIP customers. Set expiry dates to create urgency. Share codes via email campaigns or social media.' },
+      { heading: '4. Enable Recurring Orders', text: 'Many customers want regular service — weekly shirt cleaning, bi-weekly bedding, monthly suit care. CleanPOS supports recurring orders (weekly/bi-weekly). Once set up, the order repeats automatically. The customer doesn\'t need to re-book each time, reducing friction and increasing lifetime value.' },
+      { heading: '5. Follow Up After Delivery', text: 'Use the Marketing tab to send targeted emails to customers who haven\'t ordered in 30+ days. A simple "We miss you — here\'s 15% off your next order" email can reactivate dormant customers. Track open rates and conversions directly in the dashboard.' },
+    ]},
+    { title: 'Setting Up Delivery Routes That Save Time', desc: 'How to configure postcode areas and time slots to maximise driver efficiency and customer satisfaction.', tag: 'Operations', content: [
+      { heading: 'The Challenge', text: 'Delivery is the most expensive part of a collection/delivery service. Poorly planned routes waste fuel, time, and driver hours. Overlapping time slots cause missed windows. CleanPOS gives you the tools to plan delivery coverage strategically.' },
+      { heading: '1. Define Your Postcode Areas', text: 'Go to Back Office → Schedule → Postcode Areas. Create areas by grouping nearby postcodes: "City Centre" (LE1, LE2), "North" (LE4, LE5, LE7), "South" (LE8, LE9, LE18). Each area can have different time slots and surcharges. This lets you control where and when you offer service.' },
+      { heading: '2. Set Smart Time Slots', text: 'For each postcode area, configure collection and delivery slots. Best practice: morning slots (8-12) for collections, afternoon slots (2-6) for deliveries. This creates a natural flow — collect in the morning, process during the day, deliver in the afternoon. Limit slots to what your drivers can handle.' },
+      { heading: '3. Use Capacity Limits', text: 'Each time slot has a "max bookings" setting. If you have one driver covering the North area, set the limit to 8-10 bookings per slot. Once full, customers see the slot as unavailable and choose the next one. This prevents overbooking and ensures reliable service.' },
+      { heading: '4. Add Distance-Based Surcharges', text: 'For areas further from your shop, add a surcharge (e.g., £2-5 extra for postcodes 10+ miles away). This covers fuel costs and discourages orders from unprofitable areas unless the customer is willing to pay. Surcharges are shown transparently during booking.' },
+      { heading: '5. Connect Shipday for Live Tracking', text: 'Once your areas and slots are configured, connect Shipday for real-time driver tracking. When you mark an order as "Ready for Delivery", a delivery job is created in Shipday automatically. Your customer gets a live tracking link. Drivers use the Shipday app for navigation and proof of delivery.' },
+      { heading: 'Pro Tip: Start Small', text: 'Don\'t try to cover your entire city on day one. Start with 2-3 postcode areas close to your shop. Perfect your routes, build demand, then expand. It\'s much better to deliver reliably in a small area than unreliably across a wide one.' },
+    ]},
+    { title: 'Understanding Your Sales Reports', desc: 'A walkthrough of the analytics and reports dashboard — track revenue, popular services, and customer trends.', tag: 'Analytics', content: [
+      { heading: 'Why Data Matters', text: 'Running a service business without data is like driving with your eyes closed. CleanPOS tracks every order, customer, and payment — giving you insights that help you make better decisions about pricing, staffing, marketing, and growth.' },
+      { heading: 'Revenue Overview', text: 'The Reports tab in Back Office shows your total revenue, order count, and average order value. Filter by date range (today, this week, this month, custom) to see trends. Are weekday orders growing? Is your average order value increasing? These numbers tell the story of your business health.' },
+      { heading: 'Popular Services', text: 'See which services generate the most revenue and orders. If "Suit Dry Cleaning" is your top earner but "Alterations" has higher margins, you might promote alterations more. If a service has zero orders, consider removing it to simplify your catalog.' },
+      { heading: 'Customer Insights', text: 'Track your customer count, new signups per month, and repeat order rate. The Customers tab shows individual order history — identify your VIP customers (top 10% by spend) and reward them. Spot customers who haven\'t ordered in 60+ days and send them a win-back email.' },
+      { heading: 'Order Status Pipeline', text: 'The order management view shows how many orders are in each status: pending, collected, cleaning, ready, delivered, completed. If orders are piling up in "cleaning", you might need more processing capacity. If "collection failed" is high, investigate your collection process.' },
+      { heading: 'Payment Tracking', text: 'Filter orders by payment method (Stripe, On Account) and payment status (paid, pending). For on-account customers, track outstanding balances. For Stripe payments, verify that all online orders have been settled. Export data for your accountant at tax time.' },
+      { heading: 'Making It Actionable', text: 'Data is only useful if you act on it. Set a weekly habit: every Monday, check last week\'s numbers. Revenue up? Great, what drove it? Revenue down? Check order count vs average value. One number tells you if you need more customers. The other tells you if you need to upsell. Both are fixable.' },
+    ]},
+  ];
+
+  return (
+    <SaaSLayout {...props}>
+      {/* Hero */}
+      <section className="bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 text-white py-24 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl md:text-6xl font-black mb-6">Resources & Guides</h1>
+          <p className="text-xl text-gray-300">Everything you need to get the most out of CleanPOS.</p>
+        </div>
+      </section>
+
+      {/* Getting Started Guides */}
+      <section className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-12 text-center">Step-by-Step Guides</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {guides.map((g, i) => (
+              <div key={i} className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-8">
+                <div className="w-12 h-12 bg-trust-blue/10 rounded-xl flex items-center justify-center mb-4">
+                  <g.icon size={24} className="text-trust-blue" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{g.title}</h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-4">{g.desc}</p>
+                <ol className="space-y-2">
+                  {g.steps.map((s, j) => (
+                    <li key={j} className="flex items-start gap-3 text-sm text-gray-500 dark:text-gray-400">
+                      <span className="w-6 h-6 bg-trust-blue text-white rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">{j + 1}</span>
+                      {s}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Articles */}
+      <section className="bg-gray-50 dark:bg-gray-900 py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          {openArticle === null ? (
+            <>
+              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-12 text-center">Articles & Tips</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {articles.map((a, i) => (
+                  <div key={i} onClick={() => { setOpenArticle(i); window.scrollTo(0, 0); }} className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-100 dark:border-gray-700 hover:shadow-lg hover:border-trust-blue/30 transition cursor-pointer group">
+                    <span className="inline-block bg-trust-blue/10 text-trust-blue text-xs font-bold px-3 py-1 rounded-full mb-3">{a.tag}</span>
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 group-hover:text-trust-blue transition">{a.title}</h3>
+                    <p className="text-gray-600 dark:text-gray-400 text-sm">{a.desc}</p>
+                    <span className="inline-flex items-center gap-1 text-trust-blue text-sm font-bold mt-4">Read article <ArrowRight size={14} /></span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="max-w-3xl mx-auto">
+              <button onClick={() => setOpenArticle(null)} className="flex items-center gap-2 text-trust-blue font-bold mb-8 hover:underline"><ChevronLeft size={20} /> Back to Articles</button>
+              <span className="inline-block bg-trust-blue/10 text-trust-blue text-xs font-bold px-3 py-1 rounded-full mb-4">{articles[openArticle].tag}</span>
+              <h1 className="text-3xl md:text-4xl font-black text-gray-900 dark:text-white mb-4">{articles[openArticle].title}</h1>
+              <p className="text-lg text-gray-500 mb-10 border-b border-gray-200 dark:border-gray-700 pb-8">{articles[openArticle].desc}</p>
+              <div className="space-y-8">
+                {articles[openArticle].content.map((section: any, j: number) => (
+                  <div key={j}>
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-3">{section.heading}</h2>
+                    <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{section.text}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700">
+                <button onClick={() => setOpenArticle(null)} className="flex items-center gap-2 text-trust-blue font-bold hover:underline"><ChevronLeft size={20} /> Back to Articles</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Integrations */}
+      <section className="py-20 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-12">Powered By Industry Leaders</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[{ name: 'Stripe', desc: 'Payments' }, { name: 'Shipday', desc: 'Delivery tracking' }, { name: 'Brevo', desc: 'Email marketing' }, { name: 'Google Maps', desc: 'Postcode validation' }].map((int, i) => (
+              <div key={i} className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-6 border border-gray-100 dark:border-gray-800">
+                <p className="font-bold text-gray-900 dark:text-white text-lg">{int.name}</p>
+                <p className="text-sm text-gray-500 mt-1">{int.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="bg-trust-blue py-16 px-6 text-center">
+        <h2 className="text-3xl font-bold text-white mb-4">Ready to Get Started?</h2>
+        <p className="text-blue-100 mb-8">Sign up free and have your store online in under 5 minutes.</p>
+        <button onClick={props.onSignUp} className="bg-white text-trust-blue px-10 py-4 rounded-full font-bold text-lg hover:bg-gray-50 transition shadow-xl">Sign Up Free</button>
+      </section>
+    </SaaSLayout>
+  );
+};
+
+// ========== SUPPORT PAGE ==========
+const SaaSSupportPage: React.FC<{ setPage: (p: Page) => void; onSignUp: () => void; onPartnerLogin: () => void; user?: any; onLogout?: () => void; onGoToDashboard?: () => void }> = (props) => {
+  const faqs = [
+    { q: 'How do I sign up?', a: 'Click "Sign Up" on our homepage, enter your business name, email, and subdomain. Your store will be live in under 2 minutes with a 15-day free trial.' },
+    { q: 'How do I add my services and pricing?', a: 'Go to Back Office → Services tab. Click "Add Service" to create services with names, prices, categories, and images.' },
+    { q: 'How do I set up collection & delivery areas?', a: 'Go to Back Office → Schedule tab → Postcode Areas. Add areas with postcode prefixes (e.g., SW1, LE2) and configure time slots for each.' },
+    { q: 'How do I connect Stripe for payments?', a: 'Go to Back Office → Subscription & Billing → Click "Connect Stripe to Activate". Follow the Stripe onboarding process to link your bank account.' },
+    { q: 'How do customers place orders?', a: 'Share your store URL (e.g., xp-clean.web.app/?tenant=yourstore). Customers can browse services, select items, choose time slots, and pay online.' },
+    { q: 'Can customers pay in-store instead of online?', a: 'Yes. If Stripe is not connected, or for orders under £15, customers can book "On Account" and pay in person.' },
+    { q: 'How do I track deliveries?', a: 'Go to Back Office → Settings and enable Shipday. Add your Shipday API key. When orders are marked "Ready for Delivery", a driver job is automatically created.' },
+    { q: 'How do I print receipts and tags?', a: 'Download the CleanPOS Desktop App (Electron). Configure your thermal printer (80mm for receipts) and label printer (Brother QL-800 for bag tags) in Settings.' },
+    { q: 'Can I have multiple staff members?', a: 'Yes. Go to Back Office → Drivers tab to add staff. Admin staff can access the full back office. Drivers have their own portal for deliveries.' },
+    { q: 'How do I send marketing emails?', a: 'Go to Back Office → Marketing tab. You can send email campaigns to all customers or specific segments using the built-in Brevo integration.' },
+    { q: 'What happens when my trial ends?', a: 'You\'ll be prompted to connect Stripe to activate pay-per-order billing. Until then, the subscription overlay will appear but your data is safe.' },
+    { q: 'Can I customise my store\'s branding?', a: 'Yes. Go to Back Office → Store Details to set your logo, hero image, colours, footer colour, SEO description, and social media links.' },
+  ];
+
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
+  return (
+    <SaaSLayout {...props}>
+      {/* Hero */}
+      <section className="bg-gradient-to-br from-gray-900 via-blue-950 to-gray-900 text-white py-24 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-4xl md:text-6xl font-black mb-6">We're Here to Help</h1>
+          <p className="text-xl text-gray-300">Find answers to common questions or get in touch with our team.</p>
+        </div>
+      </section>
+
+      {/* Contact Cards */}
+      <section className="py-16 px-6">
+        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-6 text-center">
+            <Mail size={32} className="text-trust-blue mx-auto mb-3" />
+            <h3 className="font-bold text-gray-900 dark:text-white mb-1">Email Support</h3>
+            <p className="text-gray-500 text-sm mb-3">We typically respond within 4 hours during business hours.</p>
+            <a href="mailto:support@posso.uk" className="text-trust-blue font-bold hover:underline">support@posso.uk</a>
+          </div>
+          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-6 text-center">
+            <Clock size={32} className="text-trust-blue mx-auto mb-3" />
+            <h3 className="font-bold text-gray-900 dark:text-white mb-1">Business Hours</h3>
+            <p className="text-gray-500 text-sm mb-3">Monday to Friday</p>
+            <p className="text-gray-900 dark:text-white font-bold">9:00 AM — 6:00 PM GMT</p>
+          </div>
+          <div className="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl p-6 text-center">
+            <BookOpen size={32} className="text-trust-blue mx-auto mb-3" />
+            <h3 className="font-bold text-gray-900 dark:text-white mb-1">Resources</h3>
+            <p className="text-gray-500 text-sm mb-3">Step-by-step guides and tutorials.</p>
+            <button onClick={() => props.setPage('saas-resources')} className="text-trust-blue font-bold hover:underline">View Resources</button>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="bg-gray-50 dark:bg-gray-900 py-20 px-6">
+        <div className="max-w-3xl mx-auto">
+          <h2 className="text-3xl font-bold text-center text-gray-900 dark:text-white mb-12">Frequently Asked Questions</h2>
+          <div className="space-y-3">
+            {faqs.map((faq, i) => (
+              <div key={i} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                <button onClick={() => setOpenFaq(openFaq === i ? null : i)} className="w-full flex justify-between items-center p-5 text-left font-bold text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-750 transition">
+                  {faq.q}
+                  <ChevronDown size={20} className={`text-gray-400 transition-transform shrink-0 ml-4 ${openFaq === i ? 'rotate-180' : ''}`} />
+                </button>
+                {openFaq === i && <div className="px-5 pb-5 text-gray-600 dark:text-gray-400">{faq.a}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="bg-trust-blue py-16 px-6 text-center">
+        <h2 className="text-3xl font-bold text-white mb-4">Still Have Questions?</h2>
+        <p className="text-blue-100 mb-8">Drop us an email and we'll get back to you within 4 hours.</p>
+        <a href="mailto:support@posso.uk" className="inline-block bg-white text-trust-blue px-10 py-4 rounded-full font-bold text-lg hover:bg-gray-50 transition shadow-xl">Email Support</a>
+      </section>
+    </SaaSLayout>
+  );
+};
+
 const SaaSPage: React.FC<{
   onSignUp: () => void;
   onPartnerLogin: () => void;
   user?: any;
   onLogout?: () => void;
   onGoToDashboard?: () => void;
-}> = ({ onSignUp, onPartnerLogin, user, onLogout, onGoToDashboard }) => {
+  setPage?: (p: Page) => void;
+}> = ({ onSignUp, onPartnerLogin, user, onLogout, onGoToDashboard, setPage: setPageProp }) => {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 font-sans">
       {/* SaaS Navigation */}
@@ -12776,6 +15074,12 @@ const SaaSPage: React.FC<{
               <Sparkles size={24} className="text-white" />
             </div>
             <span className="text-2xl font-black tracking-tighter text-gray-900 dark:text-white">CleanPOS</span>
+          </div>
+          <div className="hidden md:flex items-center gap-6 text-sm font-bold text-gray-600 dark:text-gray-400">
+            <button onClick={() => setPageProp?.('saas-product')} className="hover:text-trust-blue transition">Product</button>
+            <button onClick={() => setPageProp?.('saas-pricing')} className="hover:text-trust-blue transition">Pricing</button>
+            <button onClick={() => setPageProp?.('saas-resources')} className="hover:text-trust-blue transition">Resources</button>
+            <button onClick={() => setPageProp?.('saas-support')} className="hover:text-trust-blue transition">Support</button>
           </div>
           <div className="flex items-center gap-4">
             {user ? (
@@ -12827,11 +15131,12 @@ const SaaSPage: React.FC<{
           </div>
           <div className="max-w-lg mx-auto bg-white dark:bg-gray-800 rounded-3xl shadow-2xl border-4 border-trust-blue overflow-hidden transform hover:scale-[1.02] transition-transform">
             <div className="p-8 text-center bg-trust-blue text-white">
-              <h3 className="text-2xl font-bold mb-2">Professional SaaS Plan</h3>
+              <h3 className="text-2xl font-bold mb-2">Pay Per Order</h3>
               <div className="flex items-center justify-center gap-1">
-                <span className="text-4xl font-bold">£65</span>
-                <span className="text-xl opacity-80">/month</span>
+                <span className="text-4xl font-bold">£1</span>
+                <span className="text-xl opacity-80">/order</span>
               </div>
+              <p className="text-sm opacity-80 mt-1">No monthly fees — only pay when you process orders</p>
             </div>
             <div className="p-8">
               <ul className="space-y-4 mb-8">
@@ -12865,30 +15170,122 @@ const SaaSPage: React.FC<{
               <span className="font-bold text-xl uppercase tracking-tighter">CLEANPOS</span>
             </div>
             <div className="flex gap-8 text-sm text-gray-400 font-medium">
-              <a href="#" className="hover:text-white transition">Product</a>
-              <a href="#" className="hover:text-white transition">Pricing</a>
-              <a href="#" className="hover:text-white transition">Resources</a>
-              <a href="#" className="hover:text-white transition">Support</a>
+              <button onClick={() => setPageProp?.('saas-product')} className="hover:text-white transition">Product</button>
+              <button onClick={() => setPageProp?.('saas-pricing')} className="hover:text-white transition">Pricing</button>
+              <button onClick={() => setPageProp?.('saas-resources')} className="hover:text-white transition">Resources</button>
+              <button onClick={() => setPageProp?.('saas-support')} className="hover:text-white transition">Support</button>
             </div>
             <div className="flex items-center gap-4">
-              <button onClick={onPartnerLogin} className="text-xs text-gray-600 hover:text-gray-400 transition underline underline-offset-4">Log in to existing store</button>
             </div>
           </div>
           <div className="mt-12 pt-8 border-t border-gray-900 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-xs text-gray-500">© 2026 Posso Software Solutions Ltd. All rights reserved.</p>
-            <button
-              onClick={() => {
-                // Secret trigger for master login if not on master subdomain
-                const masterLoginTrigger = (window as any)._openMaster;
-                if (masterLoginTrigger) masterLoginTrigger();
-              }}
-              className="text-[10px] text-gray-800 hover:text-gray-700 transition"
-            >
-              Master Node Access
-            </button>
           </div>
         </div>
       </footer>
+    </div>
+  );
+};
+
+// Master Login Page — dedicated page at /master-admin with 10-tap reveal
+const MasterLoginPage: React.FC<{ onAuth: () => void; error: string; password: string; setPassword: (p: string) => void }> = ({ onAuth, error, password, setPassword }) => {
+  const [tapCount, setTapCount] = useState(0);
+  const [showLogin, setShowLogin] = useState(false);
+  const [passphrase, setPassphrase] = useState('');
+  const [passphraseValid, setPassphraseValid] = useState(false);
+  const tapTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const MASTER_PASSPHRASE = 'xpclean-master-2026';
+
+  const handleTap = () => {
+    const newCount = tapCount + 1;
+    if (tapTimeoutRef.current) clearTimeout(tapTimeoutRef.current);
+    if (newCount >= 10) {
+      setShowLogin(true);
+      setTapCount(0);
+    } else {
+      setTapCount(newCount);
+      tapTimeoutRef.current = setTimeout(() => setTapCount(0), 3000);
+    }
+  };
+
+  const handlePassphraseSubmit = () => {
+    if (passphrase.trim().toLowerCase() === MASTER_PASSPHRASE) {
+      setPassphraseValid(true);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+      {!showLogin ? (
+        <div className="text-center">
+          <div
+            onClick={handleTap}
+            className="w-64 h-64 bg-gray-200 rounded-3xl mx-auto cursor-default select-none flex items-center justify-center transition-colors hover:bg-gray-250"
+            style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+          >
+            <div className="text-gray-300">
+              <ShieldCheck size={64} />
+            </div>
+          </div>
+          <p className="text-gray-300 text-xs mt-4">System maintenance portal</p>
+        </div>
+      ) : !passphraseValid ? (
+        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md text-center">
+          <ShieldCheck size={48} className="text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold mb-2 text-gray-900">Security Verification</h2>
+          <p className="text-gray-500 text-sm mb-6">Enter the master passphrase to continue.</p>
+          <input
+            type="password"
+            placeholder="Enter passphrase"
+            className="w-full p-4 bg-gray-50 rounded-xl border border-gray-200 mb-4 focus:ring-2 focus:ring-trust-blue outline-none"
+            value={passphrase}
+            onChange={e => setPassphrase(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handlePassphraseSubmit()}
+            autoFocus
+          />
+          <button
+            onClick={handlePassphraseSubmit}
+            className="w-full py-4 bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-900 transition"
+          >
+            Verify
+          </button>
+          <button
+            onClick={() => { setShowLogin(false); setPassphrase(''); }}
+            className="mt-4 text-gray-400 hover:text-gray-600 text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md text-center">
+          <ShieldCheck size={64} className="text-trust-blue mx-auto mb-4" />
+          <h2 className="text-2xl font-bold mb-2 text-gray-900">Master Platform Access</h2>
+          <p className="text-gray-500 mb-6">Enter your master PIN to access the admin dashboard.</p>
+          <input
+            type="password"
+            placeholder="Enter Master PIN"
+            className="w-full p-4 bg-gray-50 rounded-xl border border-gray-200 mb-4 focus:ring-2 focus:ring-trust-blue outline-none"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && onAuth()}
+            autoFocus
+          />
+          {error && <p className="text-red-500 font-bold text-sm mb-4">{error}</p>}
+          <button
+            onClick={onAuth}
+            className="w-full py-4 bg-trust-blue text-white rounded-xl font-bold hover:bg-trust-blue-hover transition"
+          >
+            Authorize Access
+          </button>
+          <button
+            onClick={() => { setPassphraseValid(false); setShowLogin(false); setPassphrase(''); }}
+            className="mt-4 text-gray-400 hover:text-gray-600 text-sm"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -12907,6 +15304,7 @@ const MasterAdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
   const [isCreatingPass, setIsCreatingPass] = useState(false);
   const [editingTenant, setEditingTenant] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [extendTrialDays, setExtendTrialDays] = useState(0);
 
   useEffect(() => {
     fetchData();
@@ -12990,18 +15388,28 @@ const MasterAdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
     if (!editingTenant) return;
     setIsUpdating(true);
     try {
+      const updateData: any = {
+        name: editingTenant.name,
+        subdomain: editingTenant.subdomain,
+        subscription_status: editingTenant.subscription_status,
+        is_franchise_parent: editingTenant.is_franchise_parent || false,
+        parent_tenant_id: editingTenant.parent_tenant_id || null
+      };
+      if (extendTrialDays > 0) {
+        const currentEnd = editingTenant.trial_ends_at ? new Date(editingTenant.trial_ends_at) : new Date();
+        const baseDate = currentEnd > new Date() ? currentEnd : new Date();
+        baseDate.setDate(baseDate.getDate() + extendTrialDays);
+        updateData.trial_ends_at = baseDate.toISOString();
+      }
       const { error } = await supabase
         .from('tenants')
-        .update({
-          name: editingTenant.name,
-          subdomain: editingTenant.subdomain,
-          subscription_status: editingTenant.subscription_status
-        })
+        .update(updateData)
         .eq('id', editingTenant.id);
 
       if (error) throw error;
-      alert('Tenant updated successfully.');
+      alert(`Tenant updated successfully.${extendTrialDays > 0 ? ` Trial extended by ${extendTrialDays} days.` : ''}`);
       setEditingTenant(null);
+      setExtendTrialDays(0);
       fetchData();
     } catch (err: any) {
       alert('Error updating tenant: ' + err.message);
@@ -13124,7 +15532,11 @@ const MasterAdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
                       .map(tenant => (
                         <tr key={tenant.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                           <td className="px-6 py-4">
-                            <div className="font-bold text-gray-900 dark:text-white">{tenant.name}</div>
+                            <div className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                              {tenant.name}
+                              {tenant.is_franchise_parent && <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded-full">GROUP</span>}
+                              {tenant.parent_tenant_id && <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full">CHILD</span>}
+                            </div>
                             <div className="text-[10px] text-gray-500 font-mono">{tenant.id}</div>
                           </td>
                           <td className="px-6 py-4">
@@ -13341,9 +15753,73 @@ const MasterAdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) 
                   </button>
                 </div>
               </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Extend Trial</label>
+                <p className="text-xs text-gray-400 mb-2">
+                  Current trial ends: {editingTenant.trial_ends_at ? new Date(editingTenant.trial_ends_at).toLocaleDateString() : 'Not set'}
+                  {editingTenant.trial_ends_at && new Date(editingTenant.trial_ends_at) < new Date() && <span className="text-red-500 font-bold ml-2">EXPIRED</span>}
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {[7, 14, 30, 60, 90].map(d => (
+                    <button
+                      key={d}
+                      onClick={() => setExtendTrialDays(extendTrialDays === d ? 0 : d)}
+                      className={`px-4 py-2 rounded-xl font-bold text-sm border-2 transition-all ${extendTrialDays === d ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-100 dark:border-gray-800 text-gray-400 hover:border-gray-300'}`}
+                    >
+                      +{d} days
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-xs text-gray-400">Custom:</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={extendTrialDays || ''}
+                    onChange={(e) => setExtendTrialDays(parseInt(e.target.value) || 0)}
+                    className="w-20 bg-gray-50 dark:bg-gray-800 border-none rounded-lg p-2 text-sm font-bold outline-none text-gray-900 dark:text-white"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-gray-400">days</span>
+                </div>
+                {extendTrialDays > 0 && (
+                  <p className="text-xs text-green-600 font-bold mt-2">
+                    New trial end: {(() => {
+                      const base = editingTenant.trial_ends_at && new Date(editingTenant.trial_ends_at) > new Date() ? new Date(editingTenant.trial_ends_at) : new Date();
+                      base.setDate(base.getDate() + extendTrialDays);
+                      return base.toLocaleDateString();
+                    })()}
+                  </p>
+                )}
+              </div>
+              {/* Franchise / Group Settings */}
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2"><Building2 size={14} className="inline mr-1" />Franchise Group</label>
+                <div className="space-y-3">
+                  <label className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl cursor-pointer">
+                    <input type="checkbox" checked={editingTenant.is_franchise_parent || false} onChange={e => setEditingTenant({ ...editingTenant, is_franchise_parent: e.target.checked, parent_tenant_id: e.target.checked ? null : editingTenant.parent_tenant_id })} className="w-5 h-5 rounded accent-purple-600" />
+                    <div>
+                      <span className="font-bold text-gray-900 dark:text-white text-sm">Franchise Parent</span>
+                      <p className="text-xs text-gray-400">This store can manage child stores via Group Dashboard</p>
+                    </div>
+                  </label>
+                  {!editingTenant.is_franchise_parent && (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 mb-1">Assign to Parent Group</label>
+                      <select value={editingTenant.parent_tenant_id || ''} onChange={e => setEditingTenant({ ...editingTenant, parent_tenant_id: e.target.value || null })} className="w-full bg-gray-50 dark:bg-gray-800 border-none rounded-xl p-3 font-bold text-sm outline-none text-gray-900 dark:text-white">
+                        <option value="">— None (Independent Store) —</option>
+                        {tenants.filter((t: any) => t.is_franchise_parent && t.id !== editingTenant.id).map((t: any) => (
+                          <option key={t.id} value={t.id}>{t.name} ({t.subdomain})</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="pt-4 flex gap-4">
                 <button
-                  onClick={() => setEditingTenant(null)}
+                  onClick={() => { setEditingTenant(null); setExtendTrialDays(0); }}
                   className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition"
                 >
                   Cancel
@@ -13442,12 +15918,11 @@ const SaaSSignupModal: React.FC<{ isOpen: boolean; onClose: () => void; onSignup
 
       // 5. Initiation of services skipped - new users start with empty list
 
-      // 6. Send Confirmation Email
-      await sendBrevoEmail({
-        toEmail: formData.email,
-        toName: formData.businessName,
-        subject: `Welcome to CleanPOS! Your Hub for ${formData.businessName}`,
-        textContent: `Hi ${formData.businessName},\n\nWelcome to the CleanPOS family! We're thrilled to help you grow your dry cleaning business.\n\nYour account has been successfully created and your 15-day free trial is now active.\n\nSTORE DETAILS:\n- Business Name: ${formData.businessName}\n- Your Domain: https://xp-clean.web.app/?tenant=${formData.subdomain}\n- Back Office: https://xp-clean.web.app/?tenant=${formData.subdomain}\n\nADMIN CREDENTIALS:\n- Login Email: ${formData.email}\n- Password: [The password you chose during signup]\n\nGETTING STARDED:\n1. Log in to your Back Office.\n2. Go to 'Store Settings' to customize your colors and details.\n3. Add your first service category and starts taking orders!\n\nIf you need any help, just reply to this email.\n\nKeep it clean!\nThe CleanPOS Team`
+      // 6. Send Welcome Email (HTML)
+      await sendStoreWelcomeEmail({
+        businessName: formData.businessName,
+        email: formData.email,
+        subdomain: formData.subdomain
       });
 
       setSignupResult({ tenant, admin: staffAdmin });
@@ -13687,6 +16162,24 @@ const App: React.FC = () => {
         }
       }
 
+      // Check for /master-admin URL path (no tenant needed)
+      if (window.location.pathname.includes('master-admin')) {
+        // Check for existing valid session
+        try {
+          const sessionData = sessionStorage.getItem('master_admin_session');
+          if (sessionData) {
+            const { token, expiry } = JSON.parse(sessionData);
+            if (token && expiry && Date.now() < expiry) {
+              setUserRole('master_admin');
+              setCurrentPage('master-admin');
+              return;
+            }
+          }
+        } catch (e) { /* ignore */ }
+        setCurrentPage('master-admin');
+        return;
+      }
+
       // Fallback to landing page if no tenant detected
       setCurrentPage('saas-landing');
     };
@@ -13695,12 +16188,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('payment') === 'success') {
+    const path = window.location.pathname;
+    if (params.get('payment') === 'success' || path.includes('customer-portal')) {
       if (tenant) {
         setPage('customer-portal');
-        // Clean URL without reloading
-        const newUrl = window.location.pathname + window.location.search.replace(/[?&]payment=success/, '').replace(/^\?$/, '');
-        window.history.replaceState({}, '', newUrl);
+        window.history.replaceState({}, '', `/?tenant=${tenant.subdomain}`);
       }
     }
   }, [tenant]);
@@ -13730,8 +16222,13 @@ const App: React.FC = () => {
       if (window.location.pathname.includes('back-office') && !userRole) {
         setStaffLoginType('admin');
         setIsStaffLoginOpen(true);
-        // Clean up URL to prevent re-triggering
         window.history.replaceState({}, '', `/?tenant=${tenant.subdomain}`);
+      } else if (window.location.pathname.includes('driver-portal') && !userRole) {
+        setStaffLoginType('driver');
+        setIsStaffLoginOpen(true);
+        window.history.replaceState({}, '', `/?tenant=${tenant.subdomain}`);
+      } else if (window.location.pathname.includes('master-admin') && !userRole) {
+        setCurrentPage('master-admin');
       }
     }
   }, [tenant, userRole]);
@@ -13821,6 +16318,8 @@ const App: React.FC = () => {
             setUserRole(null);
             window.location.reload();
           }} />
+        ) : currentPage === 'master-admin' && userRole !== 'master_admin' ? (
+          <MasterLoginPage onAuth={handleMasterAuth} error={masterAuthError} password={masterPassword} setPassword={setMasterPassword} />
         ) : (
           <div className="flex-1">
             {currentPage === 'saas-landing' && (
@@ -13830,7 +16329,21 @@ const App: React.FC = () => {
                 onSignUp={() => setIsSaaSSignupOpen(true)}
                 onPartnerLogin={() => setIsPartnerLoginOpen(true)}
                 onGoToDashboard={() => setPage('back-office')}
+                setPage={setPage}
               />
+            )}
+
+            {currentPage === 'saas-product' && (
+              <SaaSProductPage setPage={setPage} onSignUp={() => setIsSaaSSignupOpen(true)} onPartnerLogin={() => setIsPartnerLoginOpen(true)} user={user} onLogout={handleLogout} onGoToDashboard={() => setPage('back-office')} />
+            )}
+            {currentPage === 'saas-pricing' && (
+              <SaaSPricingPage setPage={setPage} onSignUp={() => setIsSaaSSignupOpen(true)} onPartnerLogin={() => setIsPartnerLoginOpen(true)} user={user} onLogout={handleLogout} onGoToDashboard={() => setPage('back-office')} />
+            )}
+            {currentPage === 'saas-resources' && (
+              <SaaSResourcesPage setPage={setPage} onSignUp={() => setIsSaaSSignupOpen(true)} onPartnerLogin={() => setIsPartnerLoginOpen(true)} user={user} onLogout={handleLogout} onGoToDashboard={() => setPage('back-office')} />
+            )}
+            {currentPage === 'saas-support' && (
+              <SaaSSupportPage setPage={setPage} onSignUp={() => setIsSaaSSignupOpen(true)} onPartnerLogin={() => setIsPartnerLoginOpen(true)} user={user} onLogout={handleLogout} onGoToDashboard={() => setPage('back-office')} />
             )}
 
             {tenant && (
@@ -13884,8 +16397,8 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Master Admin Auth Modal */}
-      {isMasterAuthOpen && (
+      {/* Master Admin Auth Modal — Electron only */}
+      {isMasterAuthOpen && (window as any).electronPrint && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-gray-900 p-8 rounded-3xl shadow-2xl w-full max-w-md text-center">
             <ShieldCheck size={64} className="text-trust-blue mx-auto mb-4" />

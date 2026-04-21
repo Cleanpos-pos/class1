@@ -126,8 +126,8 @@ function buildGarmentTagContent(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  // Feed 4 lines before cut - minimal gap while clearing cutter
-  const delayBeforeCut = profile?.delayBeforeCut ? Math.max(profile.delayBeforeCut - 1, 4) : 4;
+  // Feed 6 lines before cut to clear cutter blade
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 1 : 6;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
@@ -160,7 +160,7 @@ function buildGarmentTagContent(data, profile = null) {
   parts.push(ESCPOS.NORMAL_SIZE); // Reset before newline
   parts.push(Buffer.from('\n'));
 
-  // Feed lines before cut (printer-specific - from profile or default 5 for Bixolon)
+  // Feed lines before cut (printer-specific - from profile or default 6 for Bixolon)
   parts.push(feed(delayBeforeCut));
   parts.push(partialCutCmd);
 
@@ -182,8 +182,8 @@ function buildGarmentTagContent40mm(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile or use defaults
-  // Feed 4 lines before cut - minimal gap while clearing cutter
-  const delayBeforeCut = profile?.delayBeforeCut ? Math.max(profile.delayBeforeCut - 1, 4) : 4;
+  // Feed 6 lines before cut to clear cutter blade
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 1 : 6;
   const partialCutCmd = profile?.commands?.partialCut
     ? Buffer.from(profile.commands.partialCut)
     : ESCPOS.CUT_PARTIAL;
@@ -218,7 +218,7 @@ function buildGarmentTagContent40mm(data, profile = null) {
   parts.push(ESCPOS.NORMAL_SIZE);
   parts.push(Buffer.from('\n'));
 
-  // Feed lines before cut (printer-specific - from profile or default 5 for Bixolon)
+  // Feed lines before cut (printer-specific - from profile or default 6 for Bixolon)
   parts.push(feed(delayBeforeCut));
   parts.push(partialCutCmd);
 
@@ -326,8 +326,8 @@ function buildCustomerReceipt(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile
-  // Reduce feed to minimize blank space at top of next document
-  const delayBeforeCut = profile?.delayBeforeCut ? Math.max(profile.delayBeforeCut - 1, 4) : 4;
+  // Feed 6 lines before cut to clear cutter blade
+  const delayBeforeCut = profile?.delayBeforeCut ?? 6;
   const fullCutCmd = profile?.commands?.fullCut
     ? Buffer.from(profile.commands.fullCut)
     : ESCPOS.CUT_PAPER;
@@ -471,8 +471,8 @@ function buildShopCopy(data, profile = null) {
   } = data;
 
   // Get printer-specific settings from profile
-  // Shop copy needs slightly more feed than receipt (5 lines)
-  const delayBeforeCut = profile?.delayBeforeCut ?? 5;
+  // Shop copy needs more feed (11 lines) to ensure items aren't cut off
+  const delayBeforeCut = profile?.delayBeforeCut ? profile.delayBeforeCut + 3 : 11;
   const fullCutCmd = profile?.commands?.fullCut
     ? Buffer.from(profile.commands.fullCut)
     : ESCPOS.CUT_PAPER;

@@ -1,4 +1,4 @@
-export type Page = 'home' | 'services' | 'booking' | 'contact' | 'back-office' | 'driver-portal' | 'track-order' | 'customer-portal' | 'saas-landing' | 'master-admin' | 'how-it-works';
+export type Page = 'home' | 'services' | 'booking' | 'contact' | 'back-office' | 'driver-portal' | 'track-order' | 'customer-portal' | 'saas-landing' | 'master-admin' | 'how-it-works' | 'saas-product' | 'saas-pricing' | 'saas-resources' | 'saas-support';
 
 export interface ServiceItem {
   title: string;
@@ -17,6 +17,7 @@ export interface TimeSlot {
   day: string;
   label: string;
   active: boolean;
+  type?: 'collection' | 'delivery';
 }
 
 export interface CartItem {
@@ -69,4 +70,6 @@ export interface Tenant {
   seo_keywords?: string;
   social_facebook?: string;
   social_instagram?: string;
+  parent_tenant_id?: string | null;
+  is_franchise_parent?: boolean;
 }
